@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Nodus.Api.AiDrafts;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
 using Nodus.Api.Connections;
@@ -10,6 +11,7 @@ using Nodus.Api.Devices;
 using Nodus.Api.Endpoints;
 using Nodus.Api.Infrastructure.Apns;
 using Nodus.Api.Infrastructure.Hangfire;
+using Nodus.Api.Infrastructure.Llm;
 using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Infrastructure.Sse;
@@ -98,6 +100,12 @@ public static class NodusApplication
         services.AddScoped<PushDeliveryJob>();
         services.AddScoped<IOutboxHandler, PushRequestedOutboxHandler>();
 
+        services.AddNodusLlm();
+        services.AddOptions<AiOptions>().BindConfiguration(AiOptions.Section);
+        services.AddScoped<AiDraftService>();
+        services.AddScoped<AiDraftRunner>();
+        services.AddScoped<IOutboxHandler, AiDraftRequestedOutboxHandler>();
+
         services.AddNodusHangfire(configuration, connectionString);
 
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgres", tags: ["ready"]);
@@ -120,6 +128,7 @@ public static class NodusApplication
         v1.MapSseEndpoints();
         v1.MapDeviceEndpoints();
         v1.MapConnectionEndpoints();
+        v1.MapAiDraftEndpoints();
         app.ScheduleRecurringJobs();
         return app;
     }

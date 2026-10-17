@@ -36,6 +36,9 @@ public sealed class OutboxOptions
     public int PollSeconds { get; init; } = 5;
     public int BatchSize { get; init; } = 100;
     public int MaxAttempts { get; init; } = 10;
+
+    /// <summary>Off in tests, which dispatch explicitly for deterministic ordering.</summary>
+    public bool RunInBackground { get; init; } = true;
 }
 
 public sealed class OutboxDispatcher(
@@ -47,6 +50,7 @@ public sealed class OutboxDispatcher(
 {
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
+        if (!options.Value.RunInBackground) return;
         var poll = TimeSpan.FromSeconds(options.Value.PollSeconds);
         while (!stoppingToken.IsCancellationRequested)
         {

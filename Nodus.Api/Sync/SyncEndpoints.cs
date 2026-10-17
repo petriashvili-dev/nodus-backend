@@ -1,5 +1,6 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Nodus.Api.AiDrafts;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
 using Nodus.Api.Connections;
@@ -35,7 +36,7 @@ public static class SyncEndpoints
     /// </summary>
     private static async Task<ApiResult> DeltaAsync(long? cursor, int? limit, HttpContext http, NodusDbContext db,
         NodeAccess access, NodeHistoryLoader histories, NodeDtoFactory dtos, ConnectionService connectionService,
-        CancellationToken ct)
+        AiDraftService aiDrafts, CancellationToken ct)
     {
         var userId = http.User.GetUserId();
         var from = cursor ?? 0;
@@ -76,6 +77,11 @@ public static class SyncEndpoints
                                                                (c.UserLowId == userId || c.UserHighId == userId)).ToListAsync(ct),
                 userId, ct))
             .ToDictionary(c => c.Id);
+        var jobIds = latest.Where(c => c.EntityType == SyncEntityType.AiDraftJob)
+            .Select(c => Guid.TryParse(c.EntityId, out var id) ? id : Guid.Empty).ToArray();
+        var jobs = (await aiDrafts.DtosAsync(
+                await db.AiDraftJobs.AsNoTracking().Where(j => jobIds.Contains(j.Id) && j.UserId == userId).ToListAsync(ct), ct))
+            .ToDictionary(j => j.Id);
 
         var changes = new List<SyncChangeDto>(latest.Count);
         foreach (var change in latest)
@@ -102,6 +108,12 @@ public static class SyncEndpoints
                             connection.Version, connection)
                         : Tombstone(change, connection?.Version));
                     break;
+                case SyncEntityType.AiDraftJob:
+                    var job = Guid.TryParse(change.EntityId, out var jobId) ? jobs.GetValueOrDefault(jobId) : null;
+                    changes.Add(job is not null
+                        ? new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Upsert, job.Version, job)
+                        : Tombstone(change, null));
+                    break;
                 case SyncEntityType.OccurrenceState:
                     var key = ParseStateId(change.EntityId);
                     if (key is null || !loaded.TryGetValue(key.Value.NodeId, out var history)) break; // the node tombstone covers it
@@ -118,7 +130,8 @@ public static class SyncEndpoints
 
     /// <summary>Full state for first launch or an expired cursor; the returned cursor continues Delta Sync.</summary>
     private static async Task<ApiResult> SnapshotAsync(HttpContext http, NodusDbContext db, NodeAccess access,
-        NodeHistoryLoader histories, NodeDtoFactory dtos, ConnectionService connectionService, CancellationToken ct)
+        NodeHistoryLoader histories, NodeDtoFactory dtos, ConnectionService connectionService, AiDraftService aiDrafts,
+        CancellationToken ct)
     {
         var userId = http.User.GetUserId();
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
@@ -128,6 +141,10 @@ public static class SyncEndpoints
         var nodes = await access.Accessible(userId).AsNoTracking().Where(n => n.DeletedAt == null).ToListAsync(ct);
         var loaded = await histories.LoadAsync(nodes, ct);
         var connections = await connectionService.ListAsync(userId, ct);
+        var draftJobs = await aiDrafts.DtosAsync(await db.AiDraftJobs.AsNoTracking()
+            .Where(j => j.UserId == userId && (j.Status == AiDraftJobStatus.Queued || j.Status == AiDraftJobStatus.Processing ||
+                                               j.Status == AiDraftJobStatus.Ready))
+            .ToListAsync(ct), ct);
         await transaction.CommitAsync(ct);
 
         return ApiResult.Ok(new
@@ -136,6 +153,7 @@ public static class SyncEndpoints
             user = UserProfile.From(user),
             nodes = nodes.Select(n => dtos.Create(loaded[n.Id])).ToList(),
             connections,
+            ai_draft_jobs = draftJobs,
             occurrence_states = loaded.Values.SelectMany(h => h.States.Values).Select(OccurrenceStateDto.From).ToList()
         });
     }

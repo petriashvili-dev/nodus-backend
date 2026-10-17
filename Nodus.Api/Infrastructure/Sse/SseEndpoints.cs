@@ -48,7 +48,8 @@ public static class SseEndpoints
         else await response.Body.FlushAsync(ct);
 
         var heartbeat = TimeSpan.FromSeconds(options.Value.HeartbeatSeconds);
-        var sent = lastEventId ?? current;
+        // Signals at or below what the client already knows (or was just told) are redundant.
+        var sent = Math.Max(lastEventId ?? 0, current);
         try
         {
             while (!ct.IsCancellationRequested)

@@ -5,7 +5,8 @@ public enum SyncEntityType
     User,
     Node,
     OccurrenceState,
-    Connection
+    Connection,
+    AiDraftJob
 }
 
 public enum SyncOperation

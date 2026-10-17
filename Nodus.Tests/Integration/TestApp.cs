@@ -13,6 +13,7 @@ using Nodus.Api;
 using Nodus.Api.Common;
 using Nodus.Api.Devices;
 using Nodus.Api.Infrastructure.Apns;
+using Nodus.Api.Infrastructure.Llm;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Infrastructure.Resend;
 using Npgsql;
@@ -36,6 +37,7 @@ public sealed class TestApp : IAsyncLifetime
     public ManualTimeProvider Time { get; } = new(DateTimeOffset.UtcNow);
     public CapturingEmailSender Emails { get; } = new();
     public FakeApnsClient Apns { get; } = new();
+    public FakeLlmClient Llm { get; } = new();
     public IServiceProvider Services => _app!.Services;
     public Dictionary<string, string?> Settings { get; } = [];
 
@@ -58,13 +60,18 @@ public sealed class TestApp : IAsyncLifetime
                 ["Jwt:SigningKey"] = "test-signing-key-that-is-long-enough-0123456789",
                 ["EmailOtp:HashPepper"] = "test-pepper-0123456789",
                 ["Hangfire:Enabled"] = "false",
+                ["Outbox:RunInBackground"] = "false",
                 ["RateLimits:AuthPerMinute"] = "1000",
                 ["RateLimits:OtpPerMinute"] = "1000",
                 ["RateLimits:AiPerMinute"] = "1000"
             }.Concat(Settings));
             builder.Services.AddSingleton<TimeProvider>(Time);
             builder.Services.AddSingleton<IEmailSender>(Emails);
-        }, services => services.AddSingleton<IApnsClient>(Apns));
+        }, services =>
+        {
+            services.AddSingleton<IApnsClient>(Apns);
+            services.AddSingleton<ILlmClient>(Llm);
+        });
 
         await using (var scope = _app.Services.CreateAsyncScope())
             await scope.ServiceProvider.GetRequiredService<NodusDbContext>().Database.MigrateAsync();
@@ -151,6 +158,20 @@ public sealed class FakeApnsClient : IApnsClient
     {
         Sent.Enqueue((deviceToken, alert));
         return Task.FromResult(new ApnsResult(Outcomes.GetValueOrDefault(deviceToken, ApnsOutcome.Sent)));
+    }
+}
+
+public sealed class FakeLlmClient : ILlmClient
+{
+    /// <summary>Default: no nodes recognised.</summary>
+    public Func<LlmRequest, string> Respond { get; set; } = _ => """{"nodes":[]}""";
+
+    public ConcurrentQueue<LlmRequest> Requests { get; } = new();
+
+    public Task<LlmResult> GenerateAsync(LlmRequest request, CancellationToken ct)
+    {
+        Requests.Enqueue(request);
+        return Task.FromResult(new LlmResult(Respond(request), "fake", "fake-model", 10, 20, TimeSpan.FromMilliseconds(5), null));
     }
 }
 

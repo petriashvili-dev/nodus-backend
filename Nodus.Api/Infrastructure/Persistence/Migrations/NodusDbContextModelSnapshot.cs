@@ -22,6 +22,124 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Nodus.Api.AiDrafts.AiDraftJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<DateTimeOffset?>("InputPurgedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("input_purged_at");
+
+                    b.Property<string>("InputText")
+                        .HasMaxLength(8000)
+                        .HasColumnType("character varying(8000)")
+                        .HasColumnName("input_text");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("last_error");
+
+                    b.Property<string>("Model")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("model");
+
+                    b.Property<string>("PromptVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("prompt_version");
+
+                    b.Property<string>("Provider")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("provider");
+
+                    b.Property<DateTimeOffset?>("ReadyAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ready_at");
+
+                    b.Property<DateTimeOffset>("ReferenceTime")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("reference_time");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Timezone")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("timezone");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_ai_draft_jobs");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_ai_draft_jobs_created_at");
+
+                    b.HasIndex("UserId", "Status")
+                        .HasDatabaseName("ix_ai_draft_jobs_user_id_status");
+
+                    b.ToTable("ai_draft_jobs", (string)null);
+                });
+
+            modelBuilder.Entity("Nodus.Api.AiDrafts.AiNodeDraft", b =>
+                {
+                    b.Property<Guid>("JobId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("job_id");
+
+                    b.Property<int>("Index")
+                        .HasColumnType("integer")
+                        .HasColumnName("index");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload");
+
+                    b.HasKey("JobId", "Index")
+                        .HasName("pk_ai_node_drafts");
+
+                    b.ToTable("ai_node_drafts", (string)null);
+                });
+
             modelBuilder.Entity("Nodus.Api.Authentication.EmailVerificationCode", b =>
                 {
                     b.Property<Guid>("Id")
@@ -755,6 +873,26 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_sync_changes_created_at");
 
                     b.ToTable("sync_changes", (string)null);
+                });
+
+            modelBuilder.Entity("Nodus.Api.AiDrafts.AiDraftJob", b =>
+                {
+                    b.HasOne("Nodus.Api.Authentication.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_ai_draft_jobs_users_user_id");
+                });
+
+            modelBuilder.Entity("Nodus.Api.AiDrafts.AiNodeDraft", b =>
+                {
+                    b.HasOne("Nodus.Api.AiDrafts.AiDraftJob", null)
+                        .WithMany()
+                        .HasForeignKey("JobId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_ai_node_drafts_ai_draft_jobs_job_id");
                 });
 
             modelBuilder.Entity("Nodus.Api.Authentication.RefreshToken", b =>

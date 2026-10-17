@@ -7,6 +7,9 @@ public static class OutboxEventTypes
 
     /// <summary>A committed push request; enqueued as a Hangfire job on the notifications queue.</summary>
     public const string PushRequested = "push.requested";
+
+    /// <summary>A committed AI draft job; enqueued on the ai-drafts queue.</summary>
+    public const string AiDraftRequested = "ai.draft.requested";
 }
 
 /// <summary>

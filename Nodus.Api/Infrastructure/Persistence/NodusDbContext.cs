@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Nodus.Api.AiDrafts;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
 using Nodus.Api.Connections;
@@ -31,6 +32,8 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
     public DbSet<Connection> Connections => Set<Connection>();
     public DbSet<ConnectionInvite> ConnectionInvites => Set<ConnectionInvite>();
     public DbSet<SharedNodeMember> SharedNodeMembers => Set<SharedNodeMember>();
+    public DbSet<AiDraftJob> AiDraftJobs => Set<AiDraftJob>();
+    public DbSet<AiNodeDraft> AiNodeDrafts => Set<AiNodeDraft>();
 
     /// <summary>PostgreSQL <c>timestamptz</c> accepts only UTC offsets; client-supplied instants may carry any offset.</summary>
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -169,6 +172,29 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
             e.HasIndex(x => x.UserId);
             e.HasOne<Node>().WithMany().HasForeignKey(x => x.NodeId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<AiDraftJob>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Timezone).HasMaxLength(64);
+            e.Property(x => x.InputText).HasMaxLength(8000);
+            e.Property(x => x.LastError).HasMaxLength(64);
+            e.Property(x => x.PromptVersion).HasMaxLength(32);
+            e.Property(x => x.Provider).HasMaxLength(64);
+            e.Property(x => x.Model).HasMaxLength(128);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasIndex(x => new { x.UserId, x.Status });
+            e.HasIndex(x => x.CreatedAt);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<AiNodeDraft>(e =>
+        {
+            e.HasKey(x => new { x.JobId, x.Index });
+            e.Property(x => x.Payload).HasColumnType("jsonb");
+            e.HasOne<AiDraftJob>().WithMany().HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<OutboxEvent>(e =>
