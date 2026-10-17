@@ -1,4 +1,8 @@
+using Microsoft.AspNetCore.Diagnostics;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Nodus.Api.Authentication;
 using Nodus.Api.Common;
 using Nodus.Api.Endpoints;
 using Nodus.Api.Infrastructure.Persistence;
@@ -10,6 +14,10 @@ namespace Nodus.Api;
 /// <summary>Composition root, shared by <c>Program</c> and integration tests.</summary>
 public static class NodusApplication
 {
+    /// <param name="configure">
+    /// Runs before the application registrations; tests use it to add configuration and to pre-register
+    /// replacements, which win because infrastructure defaults are registered with <c>TryAdd</c>.
+    /// </param>
     public static WebApplication Build(string[] args, Action<WebApplicationBuilder>? configure = null)
     {
         var builder = WebApplication.CreateBuilder(args);
@@ -17,12 +25,27 @@ public static class NodusApplication
         var services = builder.Services;
         var configuration = builder.Configuration;
 
+        builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = Limits.RequestBodyBytes);
         services.ConfigureHttpJsonOptions(o => NodusJson.Configure(o.SerializerOptions));
-        services.AddSingleton(TimeProvider.System);
+        services.AddProblemDetails();
+        services.TryAddSingleton(TimeProvider.System);
+        services.Configure<ForwardedHeadersOptions>(o =>
+        {
+            // TLS terminates on the reverse proxy in front of the single API container.
+            o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+            if (configuration.GetValue<bool>("ReverseProxy:TrustForwardedHeaders"))
+            {
+                o.KnownIPNetworks.Clear();
+                o.KnownProxies.Clear();
+            }
+        });
 
         var connectionString = configuration.GetConnectionString("Postgres")
                                ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required.");
         services.AddDbContext<NodusDbContext>(o => NodusDbContextFactory.Configure(o, connectionString));
+
+        services.AddNodusAuthentication(configuration);
+        services.AddNodusRateLimiting(configuration);
 
         services.AddSingleton<IRecurrenceCalculator, RecurrenceCalculator>();
         services.AddSingleton<IRecurrenceProjectionService, RecurrenceProjectionService>();
@@ -30,7 +53,15 @@ public static class NodusApplication
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgres", tags: ["ready"]);
 
         var app = builder.Build();
+        app.UseForwardedHeaders();
+        app.UseExceptionHandler(e => e.Run(WriteUnhandledErrorAsync));
+        app.UseAuthentication();
+        app.UseAuthorization();
+        app.UseRateLimiter();
+
         app.MapHealthEndpoints();
+        var v1 = app.MapGroup("/v1").RequireAuthorization();
+        v1.MapAuthEndpoints();
         return app;
     }
 
@@ -48,5 +79,15 @@ public static class NodusApplication
         }
 
         return migrateOnly;
+    }
+
+    /// <summary>Malformed bodies become 400; anything else is a 500 without internal details.</summary>
+    private static Task WriteUnhandledErrorAsync(HttpContext http)
+    {
+        var error = http.Features.Get<IExceptionHandlerFeature>()?.Error;
+        var result = error is BadHttpRequestException bad
+            ? ApiResult.Problem(bad.StatusCode, "bad_request", "The request is malformed.")
+            : ApiResult.Problem(StatusCodes.Status500InternalServerError, "internal_error", "An unexpected error occurred.");
+        return result.ExecuteAsync(http);
     }
 }

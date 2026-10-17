@@ -1,0 +1,75 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.Extensions.DependencyInjection.Extensions;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.JsonWebTokens;
+using Microsoft.IdentityModel.Tokens;
+using Nodus.Api.Common;
+using Nodus.Api.Infrastructure.Resend;
+using Resend;
+
+namespace Nodus.Api.Authentication;
+
+public static class AuthenticationSetup
+{
+    public static IServiceCollection AddNodusAuthentication(this IServiceCollection services, IConfiguration configuration)
+    {
+        services.AddOptions<JwtOptions>().BindConfiguration(JwtOptions.Section).ValidateDataAnnotations().ValidateOnStart();
+        services.AddOptions<EmailOtpOptions>().BindConfiguration(EmailOtpOptions.Section).ValidateDataAnnotations().ValidateOnStart();
+        services.AddOptions<ResendOptions>().BindConfiguration(ResendOptions.Section);
+
+        services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
+        services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
+            .Configure<IOptions<JwtOptions>, TimeProvider>((bearer, jwt, time) =>
+            {
+                var skew = TimeSpan.FromSeconds(30);
+                bearer.MapInboundClaims = false;
+                bearer.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidIssuer = jwt.Value.Issuer,
+                    ValidAudience = jwt.Value.Audience,
+                    IssuerSigningKey = jwt.Value.GetSigningKey(),
+                    ValidAlgorithms = [SecurityAlgorithms.HmacSha256],
+                    NameClaimType = JwtRegisteredClaimNames.Sub,
+                    // Lifetime is checked against the application clock, the same one that issued the token.
+                    LifetimeValidator = (notBefore, expires, _, _) =>
+                    {
+                        var now = time.GetUtcNow().UtcDateTime;
+                        return (notBefore is null || notBefore <= now + skew) && expires is { } e && e > now - skew;
+                    }
+                };
+                bearer.Events = new JwtBearerEvents
+                {
+                    OnChallenge = async context =>
+                    {
+                        context.HandleResponse();
+                        await ApiResult.Problem(StatusCodes.Status401Unauthorized, ProblemCodes.Unauthorized,
+                            "A valid access token is required.").ExecuteAsync(context.HttpContext);
+                    }
+                };
+            });
+        services.AddAuthorization();
+
+        services.AddScoped<ITokenService, TokenService>();
+        services.AddScoped<IEmailOtpService, EmailOtpService>();
+
+        if (string.IsNullOrWhiteSpace(configuration[$"{ResendOptions.Section}:ApiKey"]))
+        {
+            services.TryAddSingleton<IEmailSender, LoggingEmailSender>();
+        }
+        else
+        {
+            services.Configure<ResendClientOptions>(o => o.ApiToken = configuration[$"{ResendOptions.Section}:ApiKey"]!);
+            services.AddHttpClient<IResend, ResendClient>();
+            services.TryAddScoped<IEmailSender, ResendEmailSender>();
+        }
+
+        return services;
+    }
+
+    /// <summary>The only source of the caller identity is the validated access token.</summary>
+    public static Guid GetUserId(this ClaimsPrincipal principal) =>
+        Guid.TryParse(principal.FindFirstValue(JwtRegisteredClaimNames.Sub), out var id)
+            ? id
+            : throw new InvalidOperationException("Authenticated principal has no user id.");
+}

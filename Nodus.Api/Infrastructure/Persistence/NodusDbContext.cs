@@ -14,6 +14,8 @@ namespace Nodus.Api.Infrastructure.Persistence;
 public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<EmailVerificationCode> EmailVerificationCodes => Set<EmailVerificationCode>();
     public DbSet<Node> Nodes => Set<Node>();
     public DbSet<NodeRevision> NodeRevisions => Set<NodeRevision>();
     public DbSet<NodeOccurrenceState> NodeOccurrenceStates => Set<NodeOccurrenceState>();
@@ -26,6 +28,26 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
             e.Property(x => x.Email).HasMaxLength(320);
             e.HasIndex(x => x.Email).IsUnique().HasFilter("email IS NOT NULL");
             e.Property(x => x.Version).IsConcurrencyToken();
+        });
+
+        b.Entity<RefreshToken>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.HasIndex(x => x.FamilyId);
+            e.HasIndex(x => x.UserId);
+            e.Property(x => x.RevokedReason).HasConversion<string>().HasMaxLength(32);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<EmailVerificationCode>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Email).HasMaxLength(320);
+            e.Property(x => x.Purpose).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.CodeHash).HasMaxLength(64);
+            e.HasIndex(x => new { x.Email, x.CreatedAt });
         });
 
         b.Entity<Node>(e =>
