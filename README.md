@@ -45,7 +45,7 @@ dotnet run -c Release --project Nodus.LoadTests -- http://localhost:5258 50 60
 
 ## Эксплуатация
 
-- **Docker:** `docker compose up -d --build` (`docker-compose.yml`): `postgres` с volume `pgdata`, одноразовый `migrate`, затем `api`. TLS — на reverse proxy перед `api`; `/metrics` закрыть от внешнего мира.
+- **Docker:** `docker-compose.yml` — развёртывание по схеме eatee-backend (Dokploy + Traefik, образ из GHCR, `.env` по шаблону `.env.example`): `nodus-db` → одноразовый `nodus-migrate` → `nodus-api`. `/metrics` — только на внутреннем порту 9464. Локально — `docker compose -f docker-compose.local.yml up -d --build`. Схема — [docs/09-operations.md](docs/09-operations.md#схема-развёртывания).
 - **Миграции** под контролем релиза: шаг `docker run nodus-api migrate` (или сервис `migrate` в compose) перед запуском новой версии. API сам миграции не применяет (`Database__MigrateOnStartup=false`).
 - **Health:** `/health/live` (процесс жив), `/health/ready` (PostgreSQL доступен).
 - **Graceful shutdown:** 30 с на завершение SSE и воркеров Hangfire; SSE-клиенты переподключаются и догоняют через sync.

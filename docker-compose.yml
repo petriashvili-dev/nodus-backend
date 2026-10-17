@@ -1,0 +1,97 @@
+# Nodus backend — staging/production deployment (Dokploy + Traefik), same layout as eatee-backend.
+# One API container (HTTP API, SSE, outbox dispatcher, Hangfire server) and PostgreSQL.
+# The image is built by CI and pulled from GHCR; secrets come from .env next to this file (see .env.example).
+# Local development: docker-compose.local.yml.
+services:
+  nodus.api:
+    image: ghcr.io/petriashvili-dev/nodus-backend:latest
+    pull_policy: always
+    container_name: nodus-api
+    env_file:
+      - .env
+    environment: &api-env
+      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
+      # 8080 — public API behind Traefik; 9464 — /metrics for scraping inside the Docker network only.
+      ASPNETCORE_URLS: http://+:8080;http://+:9464
+      Observability__MetricsPort: "9464"
+      ConnectionStrings__Postgres: Host=nodus-db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
+      # TLS terminates on Traefik; trust its X-Forwarded-* for client IPs (rate limits) and scheme.
+      ReverseProxy__TrustForwardedHeaders: "true"
+    expose:
+      - "8080"
+      - "9464"
+    depends_on:
+      nodus.migrate:
+        condition: service_completed_successfully
+    restart: always
+    # SSE streams and Hangfire workers get 30 s to finish (HostOptions.ShutdownTimeout).
+    stop_grace_period: 40s
+    networks:
+      - dokploy-network
+      - default
+    labels:
+      - traefik.enable=true
+      - traefik.docker.network=dokploy-network
+
+      # ── ${NODUS_DOMAIN} ───────────────────────────────────────
+      - traefik.http.routers.nodus-web.rule=Host(`${NODUS_DOMAIN}`)
+      - traefik.http.routers.nodus-web.entrypoints=web
+      - traefik.http.routers.nodus-web.middlewares=redirect-to-https@file
+      - traefik.http.routers.nodus-secure.rule=Host(`${NODUS_DOMAIN}`)
+      - traefik.http.routers.nodus-secure.entrypoints=websecure
+      - traefik.http.routers.nodus-secure.tls=true
+      - traefik.http.routers.nodus-secure.service=nodus
+
+      # ── сервис (один на все роутеры) ──────────────────────────
+      - traefik.http.services.nodus.loadbalancer.server.port=8080
+
+  # Release step: applies EF Core migrations and exits; the API starts only after it succeeded.
+  nodus.migrate:
+    image: ghcr.io/petriashvili-dev/nodus-backend:latest
+    pull_policy: always
+    container_name: nodus-migrate
+    command: ["migrate"]
+    env_file:
+      - .env
+    environment: *api-env
+    depends_on:
+      nodus.db:
+        condition: service_healthy
+    restart: "no"
+    networks:
+      - default
+
+  nodus.db:
+    image: postgres:16
+    container_name: nodus-db
+    pull_policy: missing
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB}
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    expose:
+      - "5432"
+    volumes:
+      - nodus_postgres_data:/var/lib/postgresql/data
+    restart: always
+    # Даём Postgres время на корректный shutdown (checkpoint) вместо SIGKILL через 10 с.
+    stop_grace_period: 1m
+    # Дефолтные 64 МБ /dev/shm мало для параллельных запросов.
+    shm_size: 256mb
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - default
+
+volumes:
+  nodus_postgres_data:
+
+networks:
+  dokploy-network:
+    external: true
+  default:
+    driver: bridge

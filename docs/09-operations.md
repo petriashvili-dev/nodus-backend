@@ -38,7 +38,7 @@
 | `Outbox` | `PollSeconds` 5, `BatchSize` 100, `MaxAttempts` 10 |
 | `Sse` | `HeartbeatSeconds` 20, `RetryMilliseconds` 3000 |
 | `Retention` | см. ниже |
-| `Observability` | `PrometheusEnabled`, `OtlpEndpoint`, `JsonLogs` |
+| `Observability` | `PrometheusEnabled`, `MetricsPort` (отдельный внутренний порт для `/metrics`), `OtlpEndpoint`, `JsonLogs` |
 | `ReverseProxy` | `TrustForwardedHeaders` — включить за reverse proxy |
 
 ## Запуск локально
@@ -65,12 +65,44 @@ docker run --env-file .env nodus-api migrate   # в контейнере
 
 ## Docker
 
-- `Nodus.Api/Dockerfile` — multi-stage, процесс не от root, `tzdata`, healthcheck на `/health/live`, порт 8080.
-- `docker-compose.yml` — `postgres` (volume `pgdata`) → одноразовый `migrate` → `api` (наружу только `127.0.0.1:8080`, перед ним reverse proxy с TLS). Секреты — в `.env` рядом (в git не попадает).
+- `Nodus.Api/Dockerfile` — multi-stage, процесс не от root, `tzdata`, `libgssapi`, healthcheck на `/health/live`, порт 8080.
+- `docker-compose.yml` — развёртывание (staging/production) по схеме eatee-backend: Dokploy + Traefik, образ `ghcr.io/petriashvili-dev/nodus-backend:latest`, секреты в `.env` рядом (шаблон — `.env.example`, сам `.env` в git не попадает).
+- `docker-compose.local.yml` — локальная сборка образа из исходников, API на `127.0.0.1:8080`.
+
+### Схема развёртывания
+
+```mermaid
+flowchart LR
+    DEV["git push"] --> GH["GitHub"]
+    GH -- "CI: test → build" --> GHCR[("GHCR<br/>nodus-backend:latest")]
+    GH -. "deploy webhook" .-> DOK["Dokploy"]
+
+    subgraph Server["Сервер (Docker)"]
+        TR["Traefik<br/>:80 → :443, TLS"]
+        subgraph Compose["docker-compose.yml"]
+            MIG["nodus-migrate<br/>command: migrate<br/>(одноразовый)"]
+            API["nodus-api<br/>:8080 API/SSE<br/>:9464 /metrics"]
+            DB[("nodus-db<br/>postgres:16<br/>volume nodus_postgres_data")]
+        end
+    end
+
+    DOK -- "docker compose up" --> Compose
+    GHCR -- "pull" --> MIG & API
+    Internet["iOS-клиенты"] -- "HTTPS ${NODUS_DOMAIN}" --> TR -- "dokploy-network" --> API
+    DB -- "healthy" --> MIG -- "completed successfully" --> API
+    API -- "default network" --> DB
+    API --> EXT["APNs · neuroapi.host · Timeweb · Resend"]
+```
+
+Порядок старта: `nodus-db` (healthcheck `pg_isready`) → `nodus-migrate` применяет миграции и завершается → `nodus-api` стартует только после успешной миграции. Traefik маршрутизирует наружу только порт 8080; `/metrics` на 9464 доступен лишь внутри Docker-сети (`nodus-api:9464`). PostgreSQL наружу не открыт.
 
 ```bash
-docker compose up -d --build
+cp .env.example .env    # заполнить секреты и NODUS_DOMAIN
+docker compose pull && docker compose up -d       # на сервере (или через Dokploy)
+docker compose -f docker-compose.local.yml up -d --build   # локально
 ```
+
+Имена контейнеров и volume с префиксом `nodus-`, чтобы не пересекаться с eatee на том же сервере Dokploy. Сеть `dokploy-network` — внешняя, её создаёт Dokploy.
 
 ## Health и остановка
 

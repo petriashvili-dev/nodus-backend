@@ -1,25 +1,121 @@
 # Архитектура
 
-## Схема
+## Схема взаимодействия компонентов
 
-Один процесс API (MVP, без HA) обслуживает всё:
+Один процесс API (MVP, без HA) содержит всё: HTTP API, SSE, диспетчер outbox и Hangfire server. Состояние — только в PostgreSQL; in-memory — лишь fanout SSE-сигналов.
 
 ```mermaid
-flowchart LR
-    iOS[iOS-клиент] -- HTTPS /v1 --> API[ASP.NET Core API]
-    iOS -- SSE /v1/events --> API
-    API -- EF Core --> PG[(PostgreSQL)]
-    API -- outbox dispatcher --> Hub[In-memory realtime hub]
-    Hub -- sync.required --> iOS
-    API -- outbox dispatcher --> HF[Hangfire server]
-    HF --> PG
-    HF -- AI drafts / continuations --> LLM[neuroapi.host → Timeweb Cloud]
-    HF -- push --> APNs[Apple APNs]
-    API -- OTP --> Resend[Resend]
-    APNs --> iOS
+flowchart TB
+    subgraph Clients["Клиенты"]
+        IOS["iOS-приложение<br/>LocalStore + Outbox + Sync Engine"]
+    end
+
+    subgraph Edge["Edge"]
+        TR["Traefik<br/>TLS, X-Forwarded-*"]
+    end
+
+    subgraph API["Контейнер nodus-api (ASP.NET Core, .NET 10)"]
+        direction TB
+        MW["Middleware<br/>RequestId · ошибки · JWT · rate limit"]
+        IDEM["IdempotencyFilter<br/>Idempotency-Key, транзакция"]
+
+        subgraph Modules["Модули (Minimal API)"]
+            AUTH["Authentication<br/>аккаунт, токены, email OTP,<br/>профиль, пояс, удаление"]
+            NODES["Nodes + Occurrences<br/>узлы, ревизии, экземпляры,<br/>лента, NodeAccess"]
+            SHARE["Connections + Sharing<br/>связи, приглашения, участники"]
+            AIDR["AiDrafts<br/>голосовые черновики"]
+            CONT["AiContinuations<br/>продолжение нити"]
+            PORT["DataPortability<br/>экспорт / импорт,<br/>парсеры по версии"]
+            DEV["Devices<br/>APNs-токены"]
+            SYNCR["Sync<br/>GET /sync, /snapshot"]
+            SSEE["SSE /events"]
+        end
+
+        UOW["UnitOfWork + ChangeJournal<br/>данные + sync_changes + outbox — одна транзакция"]
+        DISP["OutboxDispatcher<br/>BackgroundService, SKIP LOCKED"]
+        HUB["InMemoryRealtimeHub"]
+
+        subgraph HF["Hangfire server"]
+            Q1["ai-drafts → AiDraftRunner"]
+            Q2["ai-continuations → ContinuationRunner"]
+            Q3["imports → ImportRunner"]
+            Q4["notifications → PushDeliveryJob"]
+            Q5["maintenance → MaintenanceJob (03:00)"]
+        end
+
+        LLMC["FallbackLlmClient<br/>retry · circuit breaker · deadline"]
+        APNSC["ApnsClient + ApnsTokenProvider<br/>ES256 .p8, HTTP/2"]
+        MAIL["IEmailSender (Resend)"]
+        OBS["OpenTelemetry<br/>/metrics :9464 · OTLP"]
+    end
+
+    PG[("PostgreSQL<br/>nodus-db<br/>данные · sync_changes · outbox_events ·<br/>client_operations · схема hangfire")]
+
+    subgraph External["Внешние сервисы"]
+        NEURO["neuroapi.host<br/>(primary LLM)"]
+        TW["Timeweb Cloud AI<br/>(secondary LLM)"]
+        APPLE["Apple APNs"]
+        RESEND["Resend"]
+        PROM["Prometheus / OTLP collector"]
+    end
+
+    IOS -- "HTTPS /v1 (JSON)" --> TR
+    IOS -. "SSE /v1/events" .-> TR
+    TR --> MW --> IDEM --> Modules
+    MW --> SSEE
+
+    AUTH & NODES & SHARE & AIDR & CONT & PORT & DEV --> UOW
+    SYNCR -- "чтение журнала и состояния" --> PG
+    UOW -- "COMMIT" --> PG
+    AUTH -- "OTP" --> MAIL --> RESEND
+
+    PG -- "outbox_events" --> DISP
+    DISP -- "sync.changed" --> HUB --> SSEE
+    DISP -- "push.requested / ai.* / import.requested" --> HF
+    HF <--> PG
+
+    Q1 & Q2 & Q3 --> LLMC
+    LLMC -- "1" --> NEURO
+    LLMC -. "fallback 2" .-> TW
+    Q4 --> APNSC --> APPLE
+    APPLE -. "push" .-> IOS
+
+    OBS -.-> PROM
 ```
 
-В одном контейнере работают: HTTP API, SSE, диспетчер outbox (`BackgroundService`) и Hangfire server. Все внешние зависимости скрыты за интерфейсами (`ILlmClient`, `IApnsClient`, `IEmailSender`, `IRealtimeHub`, `IBackgroundJobs`), поэтому worker и SSE-fanout можно позже вынести в отдельные процессы.
+Как читать схему:
+
+- **Синхронный путь** (сплошные стрелки сверху вниз): запрос → middleware → фильтр идемпотентности → модуль → `UnitOfWork` → одна транзакция PostgreSQL. Ответ клиенту уходит сразу после коммита; LLM, APNs и прочие медленные операции в запросе не выполняются (исключение — email-код через Resend).
+- **Асинхронный путь**: всё, что должно произойти *после* коммита, записывается в `outbox_events` в той же транзакции. `OutboxDispatcher` забирает события и либо шлёт SSE-сигнал через hub, либо ставит задачу в нужную очередь Hangfire. Задачи сами пишут результат в PostgreSQL через тот же `UnitOfWork`, и цикл повторяется (клиент узнаёт о результате через sync/SSE/push).
+- **Клиент получает данные только через sync** (`GET /v1/sync`); SSE и APNs лишь сообщают, что пора синхронизироваться.
+
+### Путь одной мутации
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant C as iOS
+    participant API as API (фильтр + модуль)
+    participant DB as PostgreSQL
+    participant D as OutboxDispatcher
+    participant H as Hangfire
+    participant X as LLM / APNs
+    C->>API: POST /v1/ai/node-drafts + Idempotency-Key
+    API->>DB: BEGIN; ai_draft_jobs, sync_changes, outbox_events, client_operations; COMMIT
+    API-->>C: 202 queued
+    D->>DB: SELECT … FOR UPDATE SKIP LOCKED
+    D-->>C: SSE sync.required
+    D->>H: enqueue AiDraftRunner (ai-drafts)
+    H->>X: LLM (neuroapi → Timeweb)
+    H->>DB: черновики + status ready + sync_changes + outbox(push.requested)
+    D-->>C: SSE sync.required
+    D->>H: PushDeliveryJob (notifications)
+    H->>X: APNs
+    C->>API: GET /v1/sync?cursor=…
+    API-->>C: ai_draft_job (ready, drafts)
+```
+
+Все внешние зависимости скрыты за интерфейсами (`ILlmClient`, `IApnsClient`, `IEmailSender`, `IRealtimeHub`, `IBackgroundJobs`), поэтому Hangfire-воркер и SSE-fanout можно позже вынести в отдельные процессы, не меняя модули.
 
 ## Модули (`Nodus.Api/`)
 
