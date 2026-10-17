@@ -13,6 +13,7 @@
 | [07-ai-drafts.md](07-ai-drafts.md) | Голосовой разбор в черновики, LLM-клиент с fallback |
 | [08-ai-continuations.md](08-ai-continuations.md) | «Продолжение нити»: конвейер, кеш, показ и принятие |
 | [09-operations.md](09-operations.md) | Конфигурация, запуск, миграции, Docker, метрики, логи, retention, тесты |
+| [10-export-import.md](10-export-import.md) | Экспорт активных узлов в JSON, импорт Nodus-файлов по версии и чужих файлов через AI |
 
 ## Быстрые ответы
 

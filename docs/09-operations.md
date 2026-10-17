@@ -33,6 +33,7 @@
 | `Connections` | `InviteLifetimeHours` 24, `MaxPendingInvites` 10, `InviteLinkBase` |
 | `Ai` | `MaxTextLength` 4000, `MaxJobsPerDay` 50, `MaxAttempts` 3, `DraftRetentionDays` 14, `InputRetentionHours` 24 |
 | `AiContinuations` | `Enabled`, `DebounceSeconds` 20, `MaxLlmCallsPerUserPerDay` 30 |
+| `Import` | `MaxContentChars` 200 000, `MaxAiInputChars` 30 000, `MaxNodes` 1000, `MaxAiImportsPerDay` 5, `MaxAttempts` 3, `PreviewRetentionDays` 7 |
 | `Llm` | `TotalTimeoutSeconds` 150, `CircuitFailureThreshold` 5, `CircuitBreakSeconds` 60, `LogContent` false, `Providers[]` |
 | `Outbox` | `PollSeconds` 5, `BatchSize` 100, `MaxAttempts` 10 |
 | `Sse` | `HeartbeatSeconds` 20, `RetryMilliseconds` 3000 |
@@ -92,6 +93,8 @@ docker compose up -d --build
 | Неподтверждённые AI-черновики | 14 дней → `expired` | `Ai:DraftRetentionDays` |
 | Зависшие AI-задания | 2 ч → `failed` | — |
 | Кеш продолжений | 180 дней без использования | `Retention:ContinuationCacheDays` |
+| Текст импортируемого файла | сразу после AI-конвертации | — |
+| Неподтверждённый предпросмотр AI-импорта | 7 дней → `expired` | `Import:PreviewRetentionDays` |
 
 Корректность не зависит от того, запустилась ли задача вовремя.
 
@@ -151,6 +154,7 @@ dotnet test        # нужен PostgreSQL на 55432 или NODUS_TEST_POSTGRES
 | `Integration/SharingTests` | приглашения, встречные приглашения, права участников, отзыв доступа |
 | `Integration/AiDraftTests`, `Ai/*` | AI-задания, fallback LLM, разбор ответа, подтверждение |
 | `Integration/ContinuationTests` | конвейер, кеш, устаревание, принятие |
+| `Integration/ExportImportTests` | только активные узлы в экспорте, round trip без дублей, дефолты, версии, AI-импорт с предпросмотром |
 | `Integration/FailureAndSecurityTests` | повторная доставка outbox, поддельные JWT, перебор id, лимиты тела |
 
 Каждый тестовый набор создаёт свою временную БД и удаляет её после прогона.

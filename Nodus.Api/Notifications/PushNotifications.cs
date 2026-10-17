@@ -28,6 +28,7 @@ public static class PushKinds
     public const string AiDraftsReady = "ai_drafts_ready";
     public const string SharedNodeChanged = "shared_node_changed";
     public const string ConnectionChanged = "connection_changed";
+    public const string ImportReady = "import_ready";
 }
 
 /// <summary>

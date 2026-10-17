@@ -114,3 +114,4 @@ Nodus.Api
 | Sharing | `POST /nodes/{id}/members`, `DELETE /nodes/{id}/members/{userId}` |
 | AI drafts | `POST /ai/node-drafts`, `GET /ai/node-drafts`, `GET /ai/node-drafts/{jobId}`, `POST /ai/node-drafts/{jobId}/confirm` (с `nodes` — атомарно), `POST /ai/node-drafts/{jobId}/cancel` |
 | Продолжения | `POST /suggestions/{id}/shown`, `/accept` (создаёт узел атомарно), `/dismiss` |
+| Экспорт / импорт | `GET /me/export`, `POST /me/import`, `GET /me/imports/{id}`, `POST /me/imports/{id}/confirm`, `POST /me/imports/{id}/cancel` |

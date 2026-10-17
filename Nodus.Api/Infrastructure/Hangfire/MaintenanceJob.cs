@@ -2,6 +2,7 @@ using Hangfire;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Nodus.Api.AiDrafts;
+using Nodus.Api.DataPortability;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Sync;
 
@@ -29,6 +30,7 @@ public sealed class MaintenanceJob(
     NodusDbContext db,
     UnitOfWork unitOfWork,
     AiDraftService aiDrafts,
+    ImportService imports,
     IOptions<RetentionOptions> options,
     IOptions<AiOptions> aiOptions,
     TimeProvider time,
@@ -59,12 +61,34 @@ public sealed class MaintenanceJob(
         var codes = await db.EmailVerificationCodes.Where(x => x.ExpiresAt < now.AddDays(-o.EmailCodeDays)).ExecuteDeleteAsync(ct);
         var tokens = await db.RefreshTokens.Where(x => x.ExpiresAt < now).ExecuteDeleteAsync(ct);
         var ai = await AiRetentionAsync(now, ct);
+        await ImportRetentionAsync(now, ct);
         await db.ContinuationCache.Where(c => c.LastUsedAt < now.AddDays(-o.ContinuationCacheDays)).ExecuteDeleteAsync(ct);
 
         logger.LogInformation(
             "Retention: {Operations} idempotency records, sync changes for {Users} users, {Outbox} outbox events, " +
             "{Codes} email codes, {Tokens} refresh tokens removed; {AiJobs} AI jobs expired or timed out",
             operations, changes, outbox, codes, tokens, ai);
+    }
+
+    /// <summary>Unconfirmed import previews expire; imports stuck in processing fail. Status changes are journaled.</summary>
+    private async Task ImportRetentionAsync(DateTimeOffset now, CancellationToken ct)
+    {
+        var jobs = await db.ImportJobs
+            .Where(j => (j.Status == ImportJobStatus.Ready && j.ExpiresAt < now) ||
+                        ((j.Status == ImportJobStatus.Queued || j.Status == ImportJobStatus.Processing) &&
+                         j.UpdatedAt < now.AddHours(-2)))
+            .Take(500)
+            .ToListAsync(ct);
+        foreach (var job in jobs)
+        {
+            if (job.Status == ImportJobStatus.Ready) job.Status = ImportJobStatus.Expired;
+            else (job.Status, job.LastError) = (ImportJobStatus.Failed, "timed_out");
+            job.Preview = null;
+            job.InputText = null;
+            imports.Touch(job, now);
+        }
+
+        await unitOfWork.CommitAsync(ct);
     }
 
     /// <summary>

@@ -5,6 +5,7 @@ using Nodus.Api.AiDrafts;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
 using Nodus.Api.Connections;
+using Nodus.Api.DataPortability;
 using Nodus.Api.Infrastructure.Observability;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Nodes;
@@ -38,7 +39,7 @@ public static class SyncEndpoints
     /// </summary>
     private static async Task<ApiResult> DeltaAsync(long? cursor, int? limit, HttpContext http, NodusDbContext db,
         NodeAccess access, NodeHistoryLoader histories, NodeDtoFactory dtos, ConnectionService connectionService,
-        AiDraftService aiDrafts, CancellationToken ct)
+        AiDraftService aiDrafts, ImportService imports, CancellationToken ct)
     {
         var userId = http.User.GetUserId();
         NodusMetrics.Sync("delta");
@@ -85,6 +86,10 @@ public static class SyncEndpoints
         var jobs = (await aiDrafts.DtosAsync(
                 await db.AiDraftJobs.AsNoTracking().Where(j => jobIds.Contains(j.Id) && j.UserId == userId).ToListAsync(ct), ct))
             .ToDictionary(j => j.Id);
+        var importIds = latest.Where(c => c.EntityType == SyncEntityType.ImportJob)
+            .Select(c => Guid.TryParse(c.EntityId, out var id) ? id : Guid.Empty).ToArray();
+        var importJobs = await db.ImportJobs.AsNoTracking()
+            .Where(j => importIds.Contains(j.Id) && j.UserId == userId).ToDictionaryAsync(j => j.Id, ct);
         var suggestionIds = latest.Where(c => c.EntityType == SyncEntityType.Suggestion)
             .Select(c => Guid.TryParse(c.EntityId, out var id) ? id : Guid.Empty).ToArray();
         var suggestions = await db.NodeSuggestions.AsNoTracking()
@@ -119,6 +124,13 @@ public static class SyncEndpoints
                     var job = Guid.TryParse(change.EntityId, out var jobId) ? jobs.GetValueOrDefault(jobId) : null;
                     changes.Add(job is not null
                         ? new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Upsert, job.Version, job)
+                        : Tombstone(change, null));
+                    break;
+                case SyncEntityType.ImportJob:
+                    var importJob = Guid.TryParse(change.EntityId, out var importId) ? importJobs.GetValueOrDefault(importId) : null;
+                    changes.Add(importJob is not null
+                        ? new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Upsert,
+                            importJob.Version, imports.Dto(importJob))
                         : Tombstone(change, null));
                     break;
                 case SyncEntityType.Suggestion:

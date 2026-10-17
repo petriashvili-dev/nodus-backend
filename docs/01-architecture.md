@@ -34,6 +34,7 @@ flowchart LR
 | `Notifications/` | запрос push и его доставка |
 | `Connections/`, `Sharing/` | доверенные связи и совместные узлы |
 | `AiDrafts/`, `AiContinuations/` | AI-функции |
+| `DataPortability/` | экспорт и импорт, парсеры форматов по версиям |
 | `Infrastructure/` | Persistence, Outbox, Hangfire, Llm, Sse, Apns, Resend, Observability |
 | `NodusApplication.cs` | composition root: регистрация сервисов, middleware, маршруты |
 
@@ -101,17 +102,19 @@ sequenceDiagram
 | `push.requested` | `PushRequestedOutboxHandler` | ставит задачу доставки push (очередь `notifications`) |
 | `ai.draft.requested` | `AiDraftRequestedOutboxHandler` | ставит разбор текста (очередь `ai-drafts`) |
 | `ai.continuation.requested` | `ContinuationRequestedOutboxHandler` | откладывает конвейер продолжения (очередь `ai-continuations`) |
+| `import.requested` | `ImportRequestedOutboxHandler` | ставит AI-конвертацию файла (очередь `imports`) |
 
 Зачем это нужно: нельзя «сначала закоммитить, потом поставить задачу в Hangfire» — между этими шагами процесс может упасть, и задание потеряется. С outbox задание либо записано вместе с данными, либо не записано вообще.
 
 ## Фоновые задачи (Hangfire)
 
-Хранилище — тот же PostgreSQL (схема `hangfire`). Очереди: `ai-drafts`, `ai-continuations`, `notifications`, `maintenance`, `default`.
+Хранилище — тот же PostgreSQL (схема `hangfire`). Очереди: `ai-drafts`, `ai-continuations`, `imports`, `notifications`, `maintenance`, `default`.
 
 | Задача | Очередь | Когда |
 |---|---|---|
 | `AiDraftRunner` | `ai-drafts` | после создания AI-задания |
 | `ContinuationRunner` | `ai-continuations` | через 20 с после создания/правки одноразового узла |
+| `ImportRunner` | `imports` | после загрузки чужого файла на импорт |
 | `PushDeliveryJob` | `notifications` | по запросу push |
 | `MaintenanceJob` | `maintenance` | ежедневно в 03:00 UTC (retention) |
 

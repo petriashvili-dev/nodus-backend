@@ -58,6 +58,17 @@ public class NodeDraftParserTests
         Assert.Contains(drafts[4].Issues, i => i.Code == "needs_review");
     }
 
+    [Fact]
+    public void Null_numbers_in_a_rule_fall_back_to_defaults()
+    {
+        var draft = Assert.Single(Parse("""
+            {"nodes":[{"type":"recurring","title":"Оплатить аренду",
+              "recurrence":{"frequency":"monthly","interval":null,"start_date":"2026-10-05","until":null,"times":[],"week_days":[],"month_day":null}}]}
+            """));
+
+        Assert.Equal((1, (int?)null), (draft.Recurrence!.Interval, draft.Recurrence.MonthDay));
+    }
+
     [Theory]
     [InlineData("not json")]
     [InlineData("""{"items":[]}""")]

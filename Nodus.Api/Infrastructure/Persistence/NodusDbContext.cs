@@ -8,6 +8,7 @@ using Nodus.Api.AiDrafts;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
 using Nodus.Api.Connections;
+using Nodus.Api.DataPortability;
 using Nodus.Api.Devices;
 using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Nodes;
@@ -37,6 +38,7 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
     public DbSet<AiNodeDraft> AiNodeDrafts => Set<AiNodeDraft>();
     public DbSet<NodeSuggestion> NodeSuggestions => Set<NodeSuggestion>();
     public DbSet<ContinuationCacheEntry> ContinuationCache => Set<ContinuationCacheEntry>();
+    public DbSet<ImportJob> ImportJobs => Set<ImportJob>();
 
     /// <summary>PostgreSQL <c>timestamptz</c> accepts only UTC offsets; client-supplied instants may carry any offset.</summary>
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -225,6 +227,20 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
             e.Property(x => x.PromptVersion).HasMaxLength(32);
             e.Property(x => x.ResultTitle).HasMaxLength(Limits.TitleLength);
             e.HasIndex(x => x.LastUsedAt);
+        });
+
+        b.Entity<ImportJob>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.FileName).HasMaxLength(200);
+            e.Property(x => x.Timezone).HasMaxLength(64);
+            e.Property(x => x.Preview).HasColumnType("jsonb");
+            e.Property(x => x.Result).HasColumnType("jsonb");
+            e.Property(x => x.LastError).HasMaxLength(64);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasIndex(x => new { x.UserId, x.CreatedAt });
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
         b.Entity<OutboxEvent>(e =>

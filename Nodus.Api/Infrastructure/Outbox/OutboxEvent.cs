@@ -13,6 +13,9 @@ public static class OutboxEventTypes
 
     /// <summary>A one-time node's content changed; schedules the debounced continuation pipeline.</summary>
     public const string AiContinuationRequested = "ai.continuation.requested";
+
+    /// <summary>A foreign file to convert with AI; enqueued on the imports queue.</summary>
+    public const string ImportRequested = "import.requested";
 }
 
 /// <summary>

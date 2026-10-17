@@ -7,7 +7,8 @@ public enum SyncEntityType
     OccurrenceState,
     Connection,
     AiDraftJob,
-    Suggestion
+    Suggestion,
+    ImportJob
 }
 
 public enum SyncOperation

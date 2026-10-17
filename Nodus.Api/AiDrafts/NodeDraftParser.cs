@@ -211,19 +211,22 @@ public static class NodeDraftParser
         var rule = new RecurrenceRule
         {
             Frequency = frequency.Value,
-            Interval = r.TryGetProperty("interval", out var i) && i.TryGetInt32(out var interval) && interval > 0 ? interval : 1,
+            Interval = Int(r, "interval") is > 0 and var interval ? interval : 1,
             StartDate = Date(r, "start_date", issues) ?? today,
             Until = Date(r, "until", issues),
             Times = times,
             WeekDays = frequency == RecurrenceFrequency.Weekly ? weekDays : [],
-            MonthDay = frequency == RecurrenceFrequency.Monthly && r.TryGetProperty("month_day", out var md) &&
-                       md.TryGetInt32(out var monthDay) ? monthDay : null
+            MonthDay = frequency == RecurrenceFrequency.Monthly ? Int(r, "month_day") : null
         }.Normalize();
 
         if (!rule.Validate().Any()) return rule;
         issues.Add(new DraftIssue("invalid_recurrence", "recurrence", "Правило повторения некорректно."));
         return null;
     }
+
+    /// <summary>Null for absent, null or non-integer values (<c>TryGetInt32</c> throws on non-numbers).</summary>
+    private static int? Int(JsonElement e, string name) =>
+        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : null;
 
     private static string? String(JsonElement e, string name) =>
         e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;

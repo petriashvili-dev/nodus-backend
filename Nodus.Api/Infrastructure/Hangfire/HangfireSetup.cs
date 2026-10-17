@@ -9,8 +9,9 @@ public static class HangfireQueues
     public const string AiContinuations = "ai-continuations";
     public const string Notifications = "notifications";
     public const string Maintenance = "maintenance";
+    public const string Imports = "imports";
 
-    public static readonly string[] All = [AiDrafts, AiContinuations, Notifications, Maintenance, "default"];
+    public static readonly string[] All = [AiDrafts, AiContinuations, Imports, Notifications, Maintenance, "default"];
 }
 
 public sealed class HangfireOptions

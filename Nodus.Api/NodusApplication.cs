@@ -7,7 +7,9 @@ using Nodus.Api.AiContinuations;
 using Nodus.Api.AiDrafts;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
+using Nodus.Api.Common.Resolvers;
 using Nodus.Api.Connections;
+using Nodus.Api.DataPortability;
 using Nodus.Api.Devices;
 using Nodus.Api.Endpoints;
 using Nodus.Api.Infrastructure.Apns;
@@ -116,6 +118,14 @@ public static class NodusApplication
         services.AddScoped<ContinuationRunner>();
         services.AddScoped<IOutboxHandler, ContinuationRequestedOutboxHandler>();
 
+        services.AddOptions<ImportOptions>().BindConfiguration(ImportOptions.Section);
+        services.AddSelectionResolver<IImportFormatParser, ImportFormat, ImportFormat>(
+            parser => parser.Format, (key, input) => key == input, typeof(NodusApplication).Assembly);
+        services.AddScoped<ExportService>();
+        services.AddScoped<ImportService>();
+        services.AddScoped<ImportRunner>();
+        services.AddScoped<IOutboxHandler, ImportRequestedOutboxHandler>();
+
         services.AddNodusHangfire(configuration, connectionString);
 
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgres", tags: ["ready"]);
@@ -142,6 +152,7 @@ public static class NodusApplication
         v1.MapConnectionEndpoints();
         v1.MapAiDraftEndpoints();
         v1.MapSuggestionEndpoints();
+        v1.MapDataPortabilityEndpoints();
         return app;
     }
 

@@ -242,8 +242,20 @@ public sealed class NodeService(
             ? at <= now
             : node.Date is { } date && ZonedTime.StartOfDay(date.AddDays(1), ZonedTime.FindZone(node.Timezone)) <= now;
 
+    /// <summary>
+    /// Adds an imported node with a new id; the caller commits. Continuations are not requested: imported nodes are
+    /// not something the user has just written, and a large import must not fan out into model calls.
+    /// </summary>
+    public Task<Node?> AddImportedAsync(Guid userId, NodeType type, NodeTemplateInput input, ValidationErrors errors,
+        CancellationToken ct) =>
+        AddAsync(userId, new CreateNodeRequest
+        {
+            Id = Guid.NewGuid(), Type = type, Title = input.Title, Description = input.Description, Timezone = input.Timezone,
+            Date = input.Date, Time = input.Time, Recurrence = input.Recurrence, TrackYears = input.TrackYears
+        }, errors, "", ct, triggerContinuations: false);
+
     private async Task<Node?> AddAsync(Guid userId, CreateNodeRequest request, ValidationErrors errors, string prefix,
-        CancellationToken ct)
+        CancellationToken ct, bool triggerContinuations = true)
     {
         errors.AddIf(request.Id == Guid.Empty, prefix + "id", "A client-generated UUID is required.")
             .AddIf(request.Type is null || !Enum.IsDefined(request.Type.Value), prefix + "type", "A node type is required.");
@@ -268,7 +280,7 @@ public sealed class NodeService(
         }
 
         unitOfWork.Journal.Record(SyncEntityType.Node, node.Id.ToString(), node.Version, SyncOperation.Upsert, [userId]);
-        await continuations.OnNodeChangedAsync(node, ct);
+        if (triggerContinuations) await continuations.OnNodeChangedAsync(node, ct);
         return node;
     }
 

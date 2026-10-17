@@ -132,7 +132,8 @@ public sealed class IdempotencyFilter : IEndpointFilter
     public static IApplicationBuilder EnableRequestBuffering(IApplicationBuilder app) => app.Use((http, next) =>
     {
         if (!HttpMethods.IsGet(http.Request.Method) && !HttpMethods.IsHead(http.Request.Method))
-            http.Request.EnableBuffering(Limits.RequestBodyBytes);
+            // Kestrel enforces the per-endpoint size limit; the buffer only has to fit the largest one.
+            http.Request.EnableBuffering(Limits.ImportBodyBytes);
         return next(http);
     });
 }
