@@ -138,6 +138,7 @@ public sealed record NodeDto(
     long Version,
     DateTimeOffset CreatedAt,
     DateTimeOffset UpdatedAt,
+    IReadOnlyList<NodeMember> Members,
     HorizonDto Horizon,
     IReadOnlyList<OccurrenceDto> Occurrences);
 

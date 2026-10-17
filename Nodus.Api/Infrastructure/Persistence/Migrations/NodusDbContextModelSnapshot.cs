@@ -145,6 +145,11 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
 
+                    b.Property<string>("DisplayName")
+                        .HasMaxLength(60)
+                        .HasColumnType("character varying(60)")
+                        .HasColumnName("display_name");
+
                     b.Property<string>("Email")
                         .HasMaxLength(320)
                         .HasColumnType("character varying(320)")
@@ -184,6 +189,129 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                         .HasFilter("email IS NOT NULL");
 
                     b.ToTable("users", (string)null);
+                });
+
+            modelBuilder.Entity("Nodus.Api.Connections.Connection", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("ConfirmedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("confirmed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<Guid>("InviterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inviter_id");
+
+                    b.Property<DateTimeOffset?>("RemovedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("removed_at");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserHighId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_high_id");
+
+                    b.Property<Guid>("UserLowId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_low_id");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_connections");
+
+                    b.HasIndex("UserHighId")
+                        .HasDatabaseName("ix_connections_user_high_id");
+
+                    b.HasIndex("UserLowId", "UserHighId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_connections_user_low_id_user_high_id");
+
+                    b.ToTable("connections", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_connections_normalized_pair", "user_low_id < user_high_id");
+                        });
+                });
+
+            modelBuilder.Entity("Nodus.Api.Connections.ConnectionInvite", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<Guid?>("AcceptedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("accepted_by");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("code_hash");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<Guid>("InviterId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("inviter_id");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("token_hash");
+
+                    b.HasKey("Id")
+                        .HasName("pk_connection_invites");
+
+                    b.HasIndex("CodeHash")
+                        .HasDatabaseName("ix_connection_invites_code_hash");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique()
+                        .HasDatabaseName("ix_connection_invites_token_hash");
+
+                    b.HasIndex("InviterId", "Status")
+                        .HasDatabaseName("ix_connection_invites_inviter_id_status");
+
+                    b.ToTable("connection_invites", (string)null);
                 });
 
             modelBuilder.Entity("Nodus.Api.Devices.Device", b =>
@@ -519,6 +647,33 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("node_occurrence_states", (string)null);
                 });
 
+            modelBuilder.Entity("Nodus.Api.Sharing.SharedNodeMember", b =>
+                {
+                    b.Property<Guid>("NodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("node_id");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<DateTimeOffset>("AddedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("added_at");
+
+                    b.Property<Guid>("AddedBy")
+                        .HasColumnType("uuid")
+                        .HasColumnName("added_by");
+
+                    b.HasKey("NodeId", "UserId")
+                        .HasName("pk_shared_node_members");
+
+                    b.HasIndex("UserId")
+                        .HasDatabaseName("ix_shared_node_members_user_id");
+
+                    b.ToTable("shared_node_members", (string)null);
+                });
+
             modelBuilder.Entity("Nodus.Api.Sync.ClientOperation", b =>
                 {
                     b.Property<Guid>("UserId")
@@ -612,6 +767,33 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                         .HasConstraintName("fk_refresh_tokens_users_user_id");
                 });
 
+            modelBuilder.Entity("Nodus.Api.Connections.Connection", b =>
+                {
+                    b.HasOne("Nodus.Api.Authentication.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserHighId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_connections_users_user_high_id");
+
+                    b.HasOne("Nodus.Api.Authentication.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserLowId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_connections_users_user_low_id");
+                });
+
+            modelBuilder.Entity("Nodus.Api.Connections.ConnectionInvite", b =>
+                {
+                    b.HasOne("Nodus.Api.Authentication.User", null)
+                        .WithMany()
+                        .HasForeignKey("InviterId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_connection_invites_users_inviter_id");
+                });
+
             modelBuilder.Entity("Nodus.Api.Devices.Device", b =>
                 {
                     b.HasOne("Nodus.Api.Authentication.User", null)
@@ -650,6 +832,23 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_node_occurrence_states_nodes_node_id");
+                });
+
+            modelBuilder.Entity("Nodus.Api.Sharing.SharedNodeMember", b =>
+                {
+                    b.HasOne("Nodus.Api.Nodes.Node", null)
+                        .WithMany()
+                        .HasForeignKey("NodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_shared_node_members_nodes_node_id");
+
+                    b.HasOne("Nodus.Api.Authentication.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_shared_node_members_users_user_id");
                 });
 
             modelBuilder.Entity("Nodus.Api.Sync.ClientOperation", b =>

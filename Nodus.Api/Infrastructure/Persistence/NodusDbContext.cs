@@ -5,11 +5,13 @@ using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
+using Nodus.Api.Connections;
 using Nodus.Api.Devices;
 using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Nodes;
 using Nodus.Api.Occurrences;
 using Nodus.Api.Recurrence;
+using Nodus.Api.Sharing;
 using Nodus.Api.Sync;
 
 namespace Nodus.Api.Infrastructure.Persistence;
@@ -26,6 +28,9 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
     public DbSet<ClientOperation> ClientOperations => Set<ClientOperation>();
     public DbSet<OutboxEvent> OutboxEvents => Set<OutboxEvent>();
     public DbSet<Device> Devices => Set<Device>();
+    public DbSet<Connection> Connections => Set<Connection>();
+    public DbSet<ConnectionInvite> ConnectionInvites => Set<ConnectionInvite>();
+    public DbSet<SharedNodeMember> SharedNodeMembers => Set<SharedNodeMember>();
 
     /// <summary>PostgreSQL <c>timestamptz</c> accepts only UTC offsets; client-supplied instants may carry any offset.</summary>
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -43,6 +48,7 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
             e.HasKey(x => x.Id);
             e.Property(x => x.Email).HasMaxLength(320);
             e.HasIndex(x => x.Email).IsUnique().HasFilter("email IS NOT NULL");
+            e.Property(x => x.DisplayName).HasMaxLength(UserProfile.DisplayNameLength);
             e.Property(x => x.Version).IsConcurrencyToken();
         });
 
@@ -130,6 +136,38 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
             e.Property(x => x.AppVersion).HasMaxLength(32);
             e.HasIndex(x => new { x.UserId, x.InstallationId }).IsUnique();
             e.HasIndex(x => x.ApnsToken).IsUnique().HasFilter("apns_token IS NOT NULL");
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<Connection>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => new { x.UserLowId, x.UserHighId }).IsUnique();
+            e.HasIndex(x => x.UserHighId);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.ToTable(t => t.HasCheckConstraint("ck_connections_normalized_pair", "user_low_id < user_high_id"));
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserLowId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserHighId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ConnectionInvite>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.TokenHash).HasMaxLength(64);
+            e.Property(x => x.CodeHash).HasMaxLength(64);
+            e.HasIndex(x => x.TokenHash).IsUnique();
+            e.HasIndex(x => x.CodeHash);
+            e.HasIndex(x => new { x.InviterId, x.Status });
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.InviterId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<SharedNodeMember>(e =>
+        {
+            e.HasKey(x => new { x.NodeId, x.UserId });
+            e.HasIndex(x => x.UserId);
+            e.HasOne<Node>().WithMany().HasForeignKey(x => x.NodeId).OnDelete(DeleteBehavior.Cascade);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 

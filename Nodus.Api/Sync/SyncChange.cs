@@ -4,7 +4,8 @@ public enum SyncEntityType
 {
     User,
     Node,
-    OccurrenceState
+    OccurrenceState,
+    Connection
 }
 
 public enum SyncOperation

@@ -34,7 +34,7 @@ public sealed class NodeDtoFactory(IRecurrenceProjectionService projection, IOpt
 
         return new NodeDto(node.Id, node.Type, node.OwnerId, node.Title, node.Description, node.Timezone, node.Date,
             node.Time, node.ScheduledAt, node.Type == NodeType.Recurring ? node.Recurrence : null, node.TrackYears,
-            node.Revision, node.Version, node.CreatedAt, node.UpdatedAt, horizon,
+            node.Revision, node.Version, node.CreatedAt, node.UpdatedAt, history.Members ?? [], horizon,
             occurrences.Select(OccurrenceDto.From).ToList());
     }
 }

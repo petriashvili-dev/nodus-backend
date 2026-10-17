@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
+using Nodus.Api.Connections;
 using Nodus.Api.Devices;
 using Nodus.Api.Endpoints;
 using Nodus.Api.Infrastructure.Apns;
@@ -16,6 +17,7 @@ using Nodus.Api.Nodes;
 using Nodus.Api.Notifications;
 using Nodus.Api.Occurrences;
 using Nodus.Api.Recurrence;
+using Nodus.Api.Sharing;
 using Nodus.Api.Sync;
 
 namespace Nodus.Api;
@@ -89,6 +91,9 @@ public static class NodusApplication
                 PooledConnectionLifetime = TimeSpan.FromMinutes(30),
                 EnableMultipleHttp2Connections = true
             });
+        services.AddOptions<ConnectionOptions>().BindConfiguration(ConnectionOptions.Section);
+        services.AddScoped<ConnectionService>();
+        services.AddScoped<SharingService>();
         services.AddScoped<PushNotifier>();
         services.AddScoped<PushDeliveryJob>();
         services.AddScoped<IOutboxHandler, PushRequestedOutboxHandler>();
@@ -114,6 +119,7 @@ public static class NodusApplication
         v1.MapSyncEndpoints();
         v1.MapSseEndpoints();
         v1.MapDeviceEndpoints();
+        v1.MapConnectionEndpoints();
         app.ScheduleRecurringJobs();
         return app;
     }

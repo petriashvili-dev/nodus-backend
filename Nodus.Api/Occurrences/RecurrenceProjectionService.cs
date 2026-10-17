@@ -18,11 +18,17 @@ public sealed record Occurrence(
     DateTimeOffset? CompletedAt,
     bool IsPast);
 
-/// <summary>Everything needed to project a node: revisions ordered by number and explicit states by key.</summary>
+/// <summary>
+/// Everything needed to project and present a node: revisions ordered by number, explicit states by key
+/// and the members it is shared with.
+/// </summary>
 public sealed record NodeHistory(
     Node Node,
     IReadOnlyList<NodeRevision> Revisions,
-    IReadOnlyDictionary<string, NodeOccurrenceState> States);
+    IReadOnlyDictionary<string, NodeOccurrenceState> States,
+    IReadOnlyList<NodeMember>? Members = null);
+
+public sealed record NodeMember(Guid UserId, string? DisplayName);
 
 public interface IRecurrenceProjectionService
 {

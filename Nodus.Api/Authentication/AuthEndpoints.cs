@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Nodus.Api.Common;
+using Nodus.Api.Connections;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Sync;
 
@@ -11,10 +12,21 @@ public sealed record EmailStartRequest(string Email);
 
 public sealed record EmailVerifyRequest(string Email, string Code);
 
-public sealed record UserProfile(Guid Id, bool IsAnonymous, string? Email, DateTimeOffset? EmailVerifiedAt, DateTimeOffset CreatedAt)
+public sealed record UpdateProfileRequest(string? DisplayName);
+
+public sealed record UserProfile(
+    Guid Id,
+    bool IsAnonymous,
+    string? Email,
+    DateTimeOffset? EmailVerifiedAt,
+    string? DisplayName,
+    long Version,
+    DateTimeOffset CreatedAt)
 {
+    public const int DisplayNameLength = 60;
+
     public static UserProfile From(User user) =>
-        new(user.Id, user.IsAnonymous, user.Email, user.EmailVerifiedAt, user.CreatedAt);
+        new(user.Id, user.IsAnonymous, user.Email, user.EmailVerifiedAt, user.DisplayName, user.Version, user.CreatedAt);
 }
 
 public static class AuthEndpoints
@@ -33,6 +45,7 @@ public static class AuthEndpoints
         auth.MapPost("/email/sign-in/verify", SignInAsync).AllowAnonymous().RequireRateLimiting(RateLimits.Otp);
 
         v1.MapGet("/me", MeAsync).WithTags("Auth");
+        v1.MapPatch("/me", UpdateProfileAsync).WithTags("Auth").WithIdempotency();
     }
 
     private static async Task<ApiResult> CreateAnonymousAsync(
@@ -134,6 +147,33 @@ public static class AuthEndpoints
         var userId = http.User.GetUserId();
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == userId, ct);
         return user is null ? ApiResult.NotFound("User") : ApiResult.Ok(UserProfile.From(user));
+    }
+
+    /// <summary>The display name is visible to connections, so their feeds receive the change too.</summary>
+    private static async Task<ApiResult> UpdateProfileAsync(UpdateProfileRequest request, HttpContext http, NodusDbContext db,
+        UnitOfWork unitOfWork, TimeProvider time, CancellationToken ct)
+    {
+        var name = string.IsNullOrWhiteSpace(request.DisplayName) ? null : request.DisplayName.Trim();
+        if (name?.Length > UserProfile.DisplayNameLength)
+            return new ValidationErrors().Add("display_name", $"At most {UserProfile.DisplayNameLength} characters.").ToResult();
+
+        var userId = http.User.GetUserId();
+        var user = await db.Users.SingleAsync(u => u.Id == userId, ct);
+        if (user.DisplayName == name) return ApiResult.Ok(UserProfile.From(user));
+
+        user.DisplayName = name;
+        user.UpdatedAt = time.GetUtcNow();
+        user.Version++;
+        unitOfWork.Journal.Record(SyncEntityType.User, user.Id.ToString(), user.Version, SyncOperation.Upsert, [user.Id]);
+        var connections = await db.Connections
+            .Where(c => (c.UserLowId == userId || c.UserHighId == userId) && c.Status != ConnectionStatus.Removed)
+            .ToListAsync(ct);
+        foreach (var connection in connections)
+            unitOfWork.Journal.Record(SyncEntityType.Connection, connection.Id.ToString(), connection.Version,
+                SyncOperation.Upsert, [connection.Other(userId)]);
+
+        await unitOfWork.CommitAsync(ct);
+        return ApiResult.Ok(UserProfile.From(user));
     }
 
     private static ApiResult InvalidEmail() =>

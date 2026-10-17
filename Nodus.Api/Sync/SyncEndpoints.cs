@@ -2,6 +2,7 @@ using System.Data;
 using Microsoft.EntityFrameworkCore;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
+using Nodus.Api.Connections;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Nodes;
 
@@ -33,7 +34,8 @@ public static class SyncEndpoints
     /// <c>next_cursor</c> atomically and continues while <c>has_more</c>.
     /// </summary>
     private static async Task<ApiResult> DeltaAsync(long? cursor, int? limit, HttpContext http, NodusDbContext db,
-        NodeAccess access, NodeHistoryLoader histories, NodeDtoFactory dtos, CancellationToken ct)
+        NodeAccess access, NodeHistoryLoader histories, NodeDtoFactory dtos, ConnectionService connectionService,
+        CancellationToken ct)
     {
         var userId = http.User.GetUserId();
         var from = cursor ?? 0;
@@ -67,6 +69,13 @@ public static class SyncEndpoints
         var nodes = await access.Accessible(userId).AsNoTracking().Where(n => nodeIds.Contains(n.Id)).ToDictionaryAsync(n => n.Id, ct);
         var liveNodes = nodes.Values.Where(n => n.DeletedAt is null).ToList();
         var loaded = await histories.LoadAsync(liveNodes, ct);
+        var connectionIds = latest.Where(c => c.EntityType == SyncEntityType.Connection)
+            .Select(c => Guid.TryParse(c.EntityId, out var id) ? id : Guid.Empty).ToArray();
+        var connections = (await connectionService.DtosAsync(
+                await db.Connections.AsNoTracking().Where(c => connectionIds.Contains(c.Id) &&
+                                                               (c.UserLowId == userId || c.UserHighId == userId)).ToListAsync(ct),
+                userId, ct))
+            .ToDictionary(c => c.Id);
 
         var changes = new List<SyncChangeDto>(latest.Count);
         foreach (var change in latest)
@@ -84,6 +93,15 @@ public static class SyncEndpoints
                             node.Version, dtos.Create(loaded[node.Id]))
                         : Tombstone(change, node?.Version));
                     break;
+                case SyncEntityType.Connection:
+                    var connection = Guid.TryParse(change.EntityId, out var connectionId)
+                        ? connections.GetValueOrDefault(connectionId)
+                        : null;
+                    changes.Add(connection is { Status: not ConnectionStatus.Removed }
+                        ? new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Upsert,
+                            connection.Version, connection)
+                        : Tombstone(change, connection?.Version));
+                    break;
                 case SyncEntityType.OccurrenceState:
                     var key = ParseStateId(change.EntityId);
                     if (key is null || !loaded.TryGetValue(key.Value.NodeId, out var history)) break; // the node tombstone covers it
@@ -100,7 +118,7 @@ public static class SyncEndpoints
 
     /// <summary>Full state for first launch or an expired cursor; the returned cursor continues Delta Sync.</summary>
     private static async Task<ApiResult> SnapshotAsync(HttpContext http, NodusDbContext db, NodeAccess access,
-        NodeHistoryLoader histories, NodeDtoFactory dtos, CancellationToken ct)
+        NodeHistoryLoader histories, NodeDtoFactory dtos, ConnectionService connectionService, CancellationToken ct)
     {
         var userId = http.User.GetUserId();
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
@@ -109,6 +127,7 @@ public static class SyncEndpoints
 
         var nodes = await access.Accessible(userId).AsNoTracking().Where(n => n.DeletedAt == null).ToListAsync(ct);
         var loaded = await histories.LoadAsync(nodes, ct);
+        var connections = await connectionService.ListAsync(userId, ct);
         await transaction.CommitAsync(ct);
 
         return ApiResult.Ok(new
@@ -116,6 +135,7 @@ public static class SyncEndpoints
             cursor = user.SyncRevision,
             user = UserProfile.From(user),
             nodes = nodes.Select(n => dtos.Create(loaded[n.Id])).ToList(),
+            connections,
             occurrence_states = loaded.Values.SelectMany(h => h.States.Values).Select(OccurrenceStateDto.From).ToList()
         });
     }
