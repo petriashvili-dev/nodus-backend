@@ -104,7 +104,7 @@ Nodus.Api
 
 | | |
 |---|---|
-| Auth | `POST /auth/anonymous`, `/auth/refresh`, `/auth/logout`, `/auth/email/start`, `/auth/email/verify`, `/auth/email/sign-in/start`, `/auth/email/sign-in/verify`; `GET/PATCH /me` |
+| Auth | `POST /auth/anonymous`, `/auth/refresh`, `/auth/logout`, `/auth/email/start`, `/auth/email/verify`, `/auth/email/sign-in/start`, `/auth/email/sign-in/verify`; `GET/PATCH/DELETE /me` |
 | Nodes | `POST /nodes`, `POST /nodes/batch`, `GET/PATCH/DELETE /nodes/{id}`, `PUT /nodes/{id}/occurrences/{key}/untie|retie`, `GET /nodes/{id}/occurrences?from&to` |
 | Лента | `GET /feed?from&to`, `GET /occurrences?from&to` (горизонт локальных уведомлений) |
 | Sync | `GET /sync?cursor&limit`, `GET /sync/snapshot`, `GET /events` (SSE `sync.required`, `Last-Event-ID`) |

@@ -46,6 +46,10 @@ public static class AuthEndpoints
 
         v1.MapGet("/me", MeAsync).WithTags("Auth");
         v1.MapPatch("/me", UpdateProfileAsync).WithTags("Auth").WithIdempotency();
+        // No Idempotency-Key: the idempotency records are deleted with the account. A repeat after a lost response
+        // gets 401 (the token's account is gone), which the client treats as "deleted".
+        v1.MapDelete("/me", (HttpContext http, AccountDeletionService deletion, CancellationToken ct) =>
+            deletion.DeleteAsync(http.User.GetUserId(), ct)).WithTags("Auth");
     }
 
     private static async Task<ApiResult> CreateAnonymousAsync(

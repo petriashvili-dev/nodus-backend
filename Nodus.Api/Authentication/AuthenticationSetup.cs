@@ -1,10 +1,13 @@
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Nodus.Api.Common;
+using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Infrastructure.Resend;
 using Resend;
 
@@ -40,6 +43,25 @@ public static class AuthenticationSetup
                 };
                 bearer.Events = new JwtBearerEvents
                 {
+                    // A deleted account's tokens must stop working immediately, not when they expire.
+                    OnTokenValidated = async context =>
+                    {
+                        if (!Guid.TryParse(context.Principal?.FindFirstValue(JwtRegisteredClaimNames.Sub), out var userId))
+                        {
+                            context.Fail("No subject.");
+                            return;
+                        }
+
+                        var services = context.HttpContext.RequestServices;
+                        var exists = await services.GetRequiredService<IMemoryCache>().GetOrCreateAsync(
+                            UserExistsCacheKey(userId), async entry =>
+                            {
+                                entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1);
+                                return await services.GetRequiredService<NodusDbContext>().Users
+                                    .AnyAsync(u => u.Id == userId, context.HttpContext.RequestAborted);
+                            });
+                        if (!exists) context.Fail("The account no longer exists.");
+                    },
                     OnChallenge = async context =>
                     {
                         context.HandleResponse();
@@ -50,7 +72,9 @@ public static class AuthenticationSetup
             });
         services.AddAuthorization();
 
+        services.AddMemoryCache();
         services.AddScoped<ITokenService, TokenService>();
+        services.AddScoped<AccountDeletionService>();
         services.AddScoped<IEmailOtpService, EmailOtpService>();
 
         if (string.IsNullOrWhiteSpace(configuration[$"{ResendOptions.Section}:ApiKey"]))
@@ -66,6 +90,8 @@ public static class AuthenticationSetup
 
         return services;
     }
+
+    public static string UserExistsCacheKey(Guid userId) => $"user-exists:{userId}";
 
     /// <summary>The only source of the caller identity is the validated access token.</summary>
     public static Guid GetUserId(this ClaimsPrincipal principal) =>
