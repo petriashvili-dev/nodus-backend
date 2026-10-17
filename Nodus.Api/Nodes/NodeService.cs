@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Nodus.Api.AiContinuations;
 using Nodus.Api.Common;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Occurrences;
@@ -47,6 +48,7 @@ public sealed class NodeService(
     NodeDtoFactory dtos,
     IRecurrenceProjectionService projection,
     IOptions<OccurrenceOptions> options,
+    ContinuationTrigger continuations,
     TimeProvider time)
 {
     public async Task<ApiResult> CreateAsync(Guid userId, CreateNodeRequest request, CancellationToken ct)
@@ -112,6 +114,7 @@ public sealed class NodeService(
         node.UpdatedBy = userId;
         unitOfWork.Journal.Record(SyncEntityType.Node, node.Id.ToString(), node.Version, SyncOperation.Upsert,
             await access.RecipientsAsync(node, ct));
+        await continuations.OnNodeChangedAsync(node, ct);
 
         await unitOfWork.CommitAsync(ct);
         return ApiResult.Ok(dtos.Create(await histories.LoadAsync(node, ct)));
@@ -137,6 +140,7 @@ public sealed class NodeService(
         node.Version++;
         unitOfWork.Journal.Record(SyncEntityType.Node, node.Id.ToString(), node.Version, SyncOperation.Delete,
             await access.RecipientsAsync(node, ct));
+        await continuations.OnNodeChangedAsync(node, ct);
 
         await unitOfWork.CommitAsync(ct);
         return ApiResult.NoContent();
@@ -209,6 +213,7 @@ public sealed class NodeService(
         }
 
         unitOfWork.Journal.Record(SyncEntityType.Node, node.Id.ToString(), node.Version, SyncOperation.Upsert, [userId]);
+        await continuations.OnNodeChangedAsync(node, ct);
         return node;
     }
 

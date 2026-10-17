@@ -19,6 +19,9 @@ public sealed class RetentionOptions
 
     public int ProcessedOutboxDays { get; init; } = 7;
     public int EmailCodeDays { get; init; } = 7;
+
+    /// <summary>Continuation cache entries unused for this long are dropped (prompt/model changes age them out).</summary>
+    public int ContinuationCacheDays { get; init; } = 180;
 }
 
 /// <summary>Daily retention cleanup. Correctness never depends on it running on time.</summary>
@@ -56,6 +59,7 @@ public sealed class MaintenanceJob(
         var codes = await db.EmailVerificationCodes.Where(x => x.ExpiresAt < now.AddDays(-o.EmailCodeDays)).ExecuteDeleteAsync(ct);
         var tokens = await db.RefreshTokens.Where(x => x.ExpiresAt < now).ExecuteDeleteAsync(ct);
         var ai = await AiRetentionAsync(now, ct);
+        await db.ContinuationCache.Where(c => c.LastUsedAt < now.AddDays(-o.ContinuationCacheDays)).ExecuteDeleteAsync(ct);
 
         logger.LogInformation(
             "Retention: {Operations} idempotency records, sync changes for {Users} users, {Outbox} outbox events, " +

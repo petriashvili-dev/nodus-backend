@@ -10,6 +10,9 @@ public static class OutboxEventTypes
 
     /// <summary>A committed AI draft job; enqueued on the ai-drafts queue.</summary>
     public const string AiDraftRequested = "ai.draft.requested";
+
+    /// <summary>A one-time node's content changed; schedules the debounced continuation pipeline.</summary>
+    public const string AiContinuationRequested = "ai.continuation.requested";
 }
 
 /// <summary>

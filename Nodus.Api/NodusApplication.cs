@@ -3,6 +3,7 @@ using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
+using Nodus.Api.AiContinuations;
 using Nodus.Api.AiDrafts;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
@@ -105,6 +106,11 @@ public static class NodusApplication
         services.AddScoped<AiDraftService>();
         services.AddScoped<AiDraftRunner>();
         services.AddScoped<IOutboxHandler, AiDraftRequestedOutboxHandler>();
+        services.AddOptions<ContinuationOptions>().BindConfiguration(ContinuationOptions.Section);
+        services.AddScoped<ContinuationTrigger>();
+        services.AddScoped<SuggestionService>();
+        services.AddScoped<ContinuationRunner>();
+        services.AddScoped<IOutboxHandler, ContinuationRequestedOutboxHandler>();
 
         services.AddNodusHangfire(configuration, connectionString);
 
@@ -129,6 +135,7 @@ public static class NodusApplication
         v1.MapDeviceEndpoints();
         v1.MapConnectionEndpoints();
         v1.MapAiDraftEndpoints();
+        v1.MapSuggestionEndpoints();
         app.ScheduleRecurringJobs();
         return app;
     }

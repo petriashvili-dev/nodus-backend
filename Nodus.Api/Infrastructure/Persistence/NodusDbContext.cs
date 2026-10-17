@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Nodus.Api.AiContinuations;
 using Nodus.Api.AiDrafts;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
@@ -34,6 +35,8 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
     public DbSet<SharedNodeMember> SharedNodeMembers => Set<SharedNodeMember>();
     public DbSet<AiDraftJob> AiDraftJobs => Set<AiDraftJob>();
     public DbSet<AiNodeDraft> AiNodeDrafts => Set<AiNodeDraft>();
+    public DbSet<NodeSuggestion> NodeSuggestions => Set<NodeSuggestion>();
+    public DbSet<ContinuationCacheEntry> ContinuationCache => Set<ContinuationCacheEntry>();
 
     /// <summary>PostgreSQL <c>timestamptz</c> accepts only UTC offsets; client-supplied instants may carry any offset.</summary>
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -195,6 +198,32 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
             e.HasKey(x => new { x.JobId, x.Index });
             e.Property(x => x.Payload).HasColumnType("jsonb");
             e.HasOne<AiDraftJob>().WithMany().HasForeignKey(x => x.JobId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<NodeSuggestion>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.HasIndex(x => x.SourceNodeId).IsUnique();
+            e.HasIndex(x => new { x.UserId, x.LlmCalledAt });
+            e.Property(x => x.ContentHash).HasMaxLength(64);
+            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Origin).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.ProposedTitle).HasMaxLength(Limits.TitleLength);
+            e.Property(x => x.ProposedDescription).HasMaxLength(Limits.DescriptionLength);
+            e.Property(x => x.PromptVersion).HasMaxLength(32);
+            e.Property(x => x.Version).IsConcurrencyToken();
+            e.HasOne<Node>().WithMany().HasForeignKey(x => x.SourceNodeId).OnDelete(DeleteBehavior.Cascade);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ContinuationCacheEntry>(e =>
+        {
+            e.ToTable("continuation_cache");
+            e.HasKey(x => x.KeyHash);
+            e.Property(x => x.KeyHash).HasMaxLength(64);
+            e.Property(x => x.PromptVersion).HasMaxLength(32);
+            e.Property(x => x.ResultTitle).HasMaxLength(Limits.TitleLength);
+            e.HasIndex(x => x.LastUsedAt);
         });
 
         b.Entity<OutboxEvent>(e =>

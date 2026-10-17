@@ -22,6 +22,142 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
 
             NpgsqlModelBuilderExtensions.UseIdentityByDefaultColumns(modelBuilder);
 
+            modelBuilder.Entity("Nodus.Api.AiContinuations.ContinuationCacheEntry", b =>
+                {
+                    b.Property<string>("KeyHash")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("key_hash");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<int>("Hits")
+                        .HasColumnType("integer")
+                        .HasColumnName("hits");
+
+                    b.Property<DateTimeOffset>("LastUsedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_used_at");
+
+                    b.Property<string>("PromptVersion")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("prompt_version");
+
+                    b.Property<string>("ResultTitle")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("result_title");
+
+                    b.HasKey("KeyHash")
+                        .HasName("pk_continuation_cache");
+
+                    b.HasIndex("LastUsedAt")
+                        .HasDatabaseName("ix_continuation_cache_last_used_at");
+
+                    b.ToTable("continuation_cache", (string)null);
+                });
+
+            modelBuilder.Entity("Nodus.Api.AiContinuations.NodeSuggestion", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<DateTimeOffset?>("AcceptedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("accepted_at");
+
+                    b.Property<string>("ContentHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("content_hash");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("DismissedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("dismissed_at");
+
+                    b.Property<Guid?>("LinkedNodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("linked_node_id");
+
+                    b.Property<DateTimeOffset?>("LlmCalledAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("llm_called_at");
+
+                    b.Property<string>("Origin")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("origin");
+
+                    b.Property<string>("PromptVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("prompt_version");
+
+                    b.Property<string>("ProposedDescription")
+                        .HasMaxLength(4000)
+                        .HasColumnType("character varying(4000)")
+                        .HasColumnName("proposed_description");
+
+                    b.Property<string>("ProposedTitle")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("proposed_title");
+
+                    b.Property<DateTimeOffset?>("ShownAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("shown_at");
+
+                    b.Property<Guid>("SourceNodeId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("source_node_id");
+
+                    b.Property<long>("SourceVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("source_version");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_node_suggestions");
+
+                    b.HasIndex("SourceNodeId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_node_suggestions_source_node_id");
+
+                    b.HasIndex("UserId", "LlmCalledAt")
+                        .HasDatabaseName("ix_node_suggestions_user_id_llm_called_at");
+
+                    b.ToTable("node_suggestions", (string)null);
+                });
+
             modelBuilder.Entity("Nodus.Api.AiDrafts.AiDraftJob", b =>
                 {
                     b.Property<Guid>("Id")
@@ -873,6 +1009,23 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_sync_changes_created_at");
 
                     b.ToTable("sync_changes", (string)null);
+                });
+
+            modelBuilder.Entity("Nodus.Api.AiContinuations.NodeSuggestion", b =>
+                {
+                    b.HasOne("Nodus.Api.Nodes.Node", null)
+                        .WithMany()
+                        .HasForeignKey("SourceNodeId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_suggestions_nodes_source_node_id");
+
+                    b.HasOne("Nodus.Api.Authentication.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_node_suggestions_users_user_id");
                 });
 
             modelBuilder.Entity("Nodus.Api.AiDrafts.AiDraftJob", b =>

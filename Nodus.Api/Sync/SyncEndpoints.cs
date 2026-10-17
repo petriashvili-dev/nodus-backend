@@ -1,5 +1,6 @@
 using System.Data;
 using Microsoft.EntityFrameworkCore;
+using Nodus.Api.AiContinuations;
 using Nodus.Api.AiDrafts;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
@@ -82,6 +83,10 @@ public static class SyncEndpoints
         var jobs = (await aiDrafts.DtosAsync(
                 await db.AiDraftJobs.AsNoTracking().Where(j => jobIds.Contains(j.Id) && j.UserId == userId).ToListAsync(ct), ct))
             .ToDictionary(j => j.Id);
+        var suggestionIds = latest.Where(c => c.EntityType == SyncEntityType.Suggestion)
+            .Select(c => Guid.TryParse(c.EntityId, out var id) ? id : Guid.Empty).ToArray();
+        var suggestions = await db.NodeSuggestions.AsNoTracking()
+            .Where(s => suggestionIds.Contains(s.Id) && s.UserId == userId).ToDictionaryAsync(s => s.Id, ct);
 
         var changes = new List<SyncChangeDto>(latest.Count);
         foreach (var change in latest)
@@ -114,6 +119,15 @@ public static class SyncEndpoints
                         ? new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Upsert, job.Version, job)
                         : Tombstone(change, null));
                     break;
+                case SyncEntityType.Suggestion:
+                    var suggestion = Guid.TryParse(change.EntityId, out var suggestionId)
+                        ? suggestions.GetValueOrDefault(suggestionId)
+                        : null;
+                    changes.Add(suggestion is not null && SuggestionDto.IsVisible(suggestion)
+                        ? new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Upsert,
+                            suggestion.Version, SuggestionDto.From(suggestion))
+                        : Tombstone(change, suggestion?.Version));
+                    break;
                 case SyncEntityType.OccurrenceState:
                     var key = ParseStateId(change.EntityId);
                     if (key is null || !loaded.TryGetValue(key.Value.NodeId, out var history)) break; // the node tombstone covers it
@@ -145,6 +159,9 @@ public static class SyncEndpoints
             .Where(j => j.UserId == userId && (j.Status == AiDraftJobStatus.Queued || j.Status == AiDraftJobStatus.Processing ||
                                                j.Status == AiDraftJobStatus.Ready))
             .ToListAsync(ct), ct);
+        var readySuggestions = await db.NodeSuggestions.AsNoTracking()
+            .Where(s => s.UserId == userId && s.Status == SuggestionStatus.Ready)
+            .ToListAsync(ct);
         await transaction.CommitAsync(ct);
 
         return ApiResult.Ok(new
@@ -154,6 +171,7 @@ public static class SyncEndpoints
             nodes = nodes.Select(n => dtos.Create(loaded[n.Id])).ToList(),
             connections,
             ai_draft_jobs = draftJobs,
+            suggestions = readySuggestions.Select(SuggestionDto.From).ToList(),
             occurrence_states = loaded.Values.SelectMany(h => h.States.Values).Select(OccurrenceStateDto.From).ToList()
         });
     }
