@@ -111,13 +111,13 @@ public sealed record TestUser(Guid Id, string AccessToken, string RefreshToken, 
 
 public sealed class ManualTimeProvider(DateTimeOffset now) : TimeProvider
 {
-    private DateTimeOffset _now = now;
+    private DateTimeOffset _now = now.ToUniversalTime();
 
     public override DateTimeOffset GetUtcNow() => _now;
 
     public void Advance(TimeSpan by) => _now += by;
 
-    public void Set(DateTimeOffset value) => _now = value;
+    public void Set(DateTimeOffset value) => _now = value.ToUniversalTime();
 }
 
 public sealed partial class CapturingEmailSender : IEmailSender

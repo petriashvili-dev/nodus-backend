@@ -186,6 +186,61 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("Nodus.Api.Infrastructure.Outbox.OutboxEvent", b =>
+                {
+                    b.Property<long>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("bigint")
+                        .HasColumnName("id");
+
+                    NpgsqlPropertyBuilderExtensions.UseIdentityAlwaysColumn(b.Property<long>("Id"));
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset?>("FailedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("failed_at");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("last_error");
+
+                    b.Property<DateTimeOffset?>("NextAttemptAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("next_attempt_at");
+
+                    b.Property<string>("Payload")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("payload");
+
+                    b.Property<DateTimeOffset?>("ProcessedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("processed_at");
+
+                    b.Property<string>("Type")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("type");
+
+                    b.HasKey("Id")
+                        .HasName("pk_outbox_events");
+
+                    b.HasIndex("Id")
+                        .HasDatabaseName("ix_outbox_events_pending")
+                        .HasFilter("processed_at IS NULL");
+
+                    b.ToTable("outbox_events", (string)null);
+                });
+
             modelBuilder.Entity("Nodus.Api.Nodes.Node", b =>
                 {
                     b.Property<Guid>("Id")
@@ -398,6 +453,89 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("node_occurrence_states", (string)null);
                 });
 
+            modelBuilder.Entity("Nodus.Api.Sync.ClientOperation", b =>
+                {
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<string>("IdempotencyKey")
+                        .HasMaxLength(128)
+                        .HasColumnType("character varying(128)")
+                        .HasColumnName("idempotency_key");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("RequestHash")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("request_hash");
+
+                    b.Property<string>("ResponseBody")
+                        .HasColumnType("text")
+                        .HasColumnName("response_body");
+
+                    b.Property<int>("StatusCode")
+                        .HasColumnType("integer")
+                        .HasColumnName("status_code");
+
+                    b.HasKey("UserId", "IdempotencyKey")
+                        .HasName("pk_client_operations");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_client_operations_created_at");
+
+                    b.ToTable("client_operations", (string)null);
+                });
+
+            modelBuilder.Entity("Nodus.Api.Sync.SyncChange", b =>
+                {
+                    b.Property<Guid>("RecipientUserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("recipient_user_id");
+
+                    b.Property<long>("Revision")
+                        .HasColumnType("bigint")
+                        .HasColumnName("revision");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("EntityId")
+                        .IsRequired()
+                        .HasMaxLength(80)
+                        .HasColumnType("character varying(80)")
+                        .HasColumnName("entity_id");
+
+                    b.Property<string>("EntityType")
+                        .IsRequired()
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("entity_type");
+
+                    b.Property<long>("EntityVersion")
+                        .HasColumnType("bigint")
+                        .HasColumnName("entity_version");
+
+                    b.Property<string>("Operation")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("operation");
+
+                    b.HasKey("RecipientUserId", "Revision")
+                        .HasName("pk_sync_changes");
+
+                    b.HasIndex("CreatedAt")
+                        .HasDatabaseName("ix_sync_changes_created_at");
+
+                    b.ToTable("sync_changes", (string)null);
+                });
+
             modelBuilder.Entity("Nodus.Api.Authentication.RefreshToken", b =>
                 {
                     b.HasOne("Nodus.Api.Authentication.User", null)
@@ -436,6 +574,26 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_node_occurrence_states_nodes_node_id");
+                });
+
+            modelBuilder.Entity("Nodus.Api.Sync.ClientOperation", b =>
+                {
+                    b.HasOne("Nodus.Api.Authentication.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_client_operations_users_user_id");
+                });
+
+            modelBuilder.Entity("Nodus.Api.Sync.SyncChange", b =>
+                {
+                    b.HasOne("Nodus.Api.Authentication.User", null)
+                        .WithMany()
+                        .HasForeignKey("RecipientUserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_sync_changes_users_recipient_user_id");
                 });
 #pragma warning restore 612, 618
         }

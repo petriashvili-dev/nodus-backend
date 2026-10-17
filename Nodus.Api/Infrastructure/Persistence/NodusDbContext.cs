@@ -5,9 +5,11 @@ using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
+using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Nodes;
 using Nodus.Api.Occurrences;
 using Nodus.Api.Recurrence;
+using Nodus.Api.Sync;
 
 namespace Nodus.Api.Infrastructure.Persistence;
 
@@ -19,6 +21,18 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
     public DbSet<Node> Nodes => Set<Node>();
     public DbSet<NodeRevision> NodeRevisions => Set<NodeRevision>();
     public DbSet<NodeOccurrenceState> NodeOccurrenceStates => Set<NodeOccurrenceState>();
+    public DbSet<SyncChange> SyncChanges => Set<SyncChange>();
+    public DbSet<ClientOperation> ClientOperations => Set<ClientOperation>();
+    public DbSet<OutboxEvent> OutboxEvents => Set<OutboxEvent>();
+
+    /// <summary>PostgreSQL <c>timestamptz</c> accepts only UTC offsets; client-supplied instants may carry any offset.</summary>
+    protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
+    {
+        configurationBuilder.Properties<DateTimeOffset>().HaveConversion<UtcConverter>();
+        configurationBuilder.Properties<DateTimeOffset?>().HaveConversion<UtcConverter>();
+    }
+
+    private sealed class UtcConverter() : ValueConverter<DateTimeOffset, DateTimeOffset>(v => v.ToUniversalTime(), v => v);
 
     protected override void OnModelCreating(ModelBuilder b)
     {
@@ -81,6 +95,37 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
             e.Property(x => x.Title).HasMaxLength(Limits.TitleLength);
             e.Property(x => x.Version).IsConcurrencyToken();
             e.HasOne<Node>().WithMany().HasForeignKey(x => x.NodeId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<SyncChange>(e =>
+        {
+            e.HasKey(x => new { x.RecipientUserId, x.Revision });
+            e.Property(x => x.EntityType).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.Operation).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.EntityId).HasMaxLength(80);
+            e.HasIndex(x => x.CreatedAt);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.RecipientUserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<ClientOperation>(e =>
+        {
+            e.HasKey(x => new { x.UserId, x.IdempotencyKey });
+            e.Property(x => x.IdempotencyKey).HasMaxLength(Limits.IdempotencyKeyLength);
+            e.Property(x => x.RequestHash).HasMaxLength(64);
+            // text, not jsonb: replays must be byte-identical and jsonb reorders keys.
+            e.Property(x => x.ResponseBody).HasColumnType("text");
+            e.HasIndex(x => x.CreatedAt);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<OutboxEvent>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.Id).UseIdentityAlwaysColumn();
+            e.Property(x => x.Type).HasMaxLength(64);
+            e.Property(x => x.Payload).HasColumnType("jsonb");
+            e.Property(x => x.LastError).HasMaxLength(200);
+            e.HasIndex(x => x.Id).HasFilter("processed_at IS NULL").HasDatabaseName("ix_outbox_events_pending");
         });
     }
 

@@ -5,9 +5,14 @@ using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
 using Nodus.Api.Endpoints;
+using Nodus.Api.Infrastructure.Hangfire;
+using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Infrastructure.Persistence;
+using Nodus.Api.Infrastructure.Sse;
+using Nodus.Api.Nodes;
 using Nodus.Api.Occurrences;
 using Nodus.Api.Recurrence;
+using Nodus.Api.Sync;
 
 namespace Nodus.Api;
 
@@ -49,12 +54,29 @@ public static class NodusApplication
 
         services.AddSingleton<IRecurrenceCalculator, RecurrenceCalculator>();
         services.AddSingleton<IRecurrenceProjectionService, RecurrenceProjectionService>();
+        services.AddOptions<OccurrenceOptions>().BindConfiguration(OccurrenceOptions.Section);
+        services.AddScoped<NodeAccess>();
+        services.AddScoped<NodeHistoryLoader>();
+        services.AddScoped<NodeDtoFactory>();
+        services.AddScoped<NodeService>();
+
+        services.AddScoped<ChangeJournal>();
+        services.AddScoped<UnitOfWork>();
+        services.AddOptions<OutboxOptions>().BindConfiguration(OutboxOptions.Section);
+        services.AddSingleton<OutboxSignal>();
+        services.AddSingleton<OutboxDispatcher>();
+        services.AddHostedService(sp => sp.GetRequiredService<OutboxDispatcher>());
+        services.AddSingleton<IRealtimeHub, InMemoryRealtimeHub>();
+        services.AddScoped<IOutboxHandler, SyncChangedOutboxHandler>();
+
+        services.AddNodusHangfire(configuration, connectionString);
 
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgres", tags: ["ready"]);
 
         var app = builder.Build();
         app.UseForwardedHeaders();
         app.UseExceptionHandler(e => e.Run(WriteUnhandledErrorAsync));
+        IdempotencyFilter.EnableRequestBuffering(app);
         app.UseAuthentication();
         app.UseAuthorization();
         app.UseRateLimiter();
@@ -62,6 +84,10 @@ public static class NodusApplication
         app.MapHealthEndpoints();
         var v1 = app.MapGroup("/v1").RequireAuthorization();
         v1.MapAuthEndpoints();
+        v1.MapNodeEndpoints();
+        v1.MapOccurrenceEndpoints();
+        v1.MapSyncEndpoints();
+        app.ScheduleRecurringJobs();
         return app;
     }
 

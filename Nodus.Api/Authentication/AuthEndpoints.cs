@@ -1,6 +1,7 @@
 using Microsoft.EntityFrameworkCore;
 using Nodus.Api.Common;
 using Nodus.Api.Infrastructure.Persistence;
+using Nodus.Api.Sync;
 
 namespace Nodus.Api.Authentication;
 
@@ -66,8 +67,8 @@ public static class AuthEndpoints
 
     /// <summary>Attaches a verified email to the same <c>UserId</c>; no data is moved between accounts.</summary>
     private static async Task<ApiResult> VerifyLinkAsync(
-        EmailVerifyRequest request, HttpContext http, NodusDbContext db, IEmailOtpService otp, TimeProvider time,
-        CancellationToken ct)
+        EmailVerifyRequest request, HttpContext http, NodusDbContext db, IEmailOtpService otp, UnitOfWork unitOfWork,
+        TimeProvider time, CancellationToken ct)
     {
         if (!EmailAddress.TryNormalize(request.Email, out var email)) return InvalidEmail();
         var userId = http.User.GetUserId();
@@ -86,9 +87,10 @@ public static class AuthEndpoints
         user.IsAnonymous = false;
         user.UpdatedAt = now;
         user.Version++;
+        unitOfWork.Journal.Record(SyncEntityType.User, user.Id.ToString(), user.Version, SyncOperation.Upsert, [user.Id]);
         try
         {
-            await db.SaveChangesAsync(ct);
+            await unitOfWork.CommitAsync(ct);
         }
         catch (DbUpdateException e) when (e.IsUniqueViolation())
         {

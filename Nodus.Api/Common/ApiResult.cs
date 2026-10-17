@@ -50,16 +50,24 @@ public sealed class ApiResult : IResult, IStatusCodeHttpResult, IValueHttpResult
     public static ApiResult NotFound(string what = "Resource") =>
         Problem(StatusCodes.Status404NotFound, "not_found", $"{what} was not found.");
 
-    /// <summary>Replays a stored response verbatim.</summary>
-    public static ApiResult Stored(int statusCode, JsonElement? body) =>
-        new(statusCode, body, statusCode >= 400);
+    /// <summary>Replays a stored response byte for byte.</summary>
+    public static ApiResult Stored(int statusCode, string? rawBody) =>
+        new(statusCode, null, statusCode >= 400) { _rawBody = rawBody };
+
+    private string? _rawBody;
 
     public async Task ExecuteAsync(HttpContext httpContext)
     {
         httpContext.Response.StatusCode = StatusCode;
-        if (Value is null || StatusCode == StatusCodes.Status204NoContent) return;
+        if ((Value is null && _rawBody is null) || StatusCode == StatusCodes.Status204NoContent) return;
         httpContext.Response.ContentType = IsProblem ? "application/problem+json" : "application/json; charset=utf-8";
-        await JsonSerializer.SerializeAsync(httpContext.Response.Body, Value, Value.GetType(), NodusJson.Options,
+        if (_rawBody is not null)
+        {
+            await httpContext.Response.WriteAsync(_rawBody, httpContext.RequestAborted);
+            return;
+        }
+
+        await JsonSerializer.SerializeAsync(httpContext.Response.Body, Value, Value!.GetType(), NodusJson.Options,
             httpContext.RequestAborted);
     }
 }
@@ -68,6 +76,7 @@ public static class ProblemCodes
 {
     public const string Unauthorized = "unauthorized";
     public const string VersionConflict = "version_conflict";
+    public const string Conflict = "conflict";
     public const string IdempotencyConflict = "idempotency_key_reused";
     public const string IdempotencyKeyRequired = "idempotency_key_required";
     public const string RateLimited = "rate_limited";
