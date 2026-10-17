@@ -31,7 +31,13 @@ public static class HangfireSetup
         services.AddScoped<MaintenanceJob>();
         services.AddOptions<RetentionOptions>().BindConfiguration(RetentionOptions.Section);
         var options = configuration.GetSection(HangfireOptions.Section).Get<HangfireOptions>() ?? new HangfireOptions();
-        if (!options.Enabled) return services;
+        if (!options.Enabled)
+        {
+            services.AddSingleton<IBackgroundJobs, InlineBackgroundJobs>();
+            return services;
+        }
+
+        services.AddSingleton<IBackgroundJobs, HangfireBackgroundJobs>();
 
         services.AddHangfire(c => c
             .UseSimpleAssemblyNameTypeSerializer()

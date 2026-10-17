@@ -11,6 +11,8 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Nodus.Api;
 using Nodus.Api.Common;
+using Nodus.Api.Devices;
+using Nodus.Api.Infrastructure.Apns;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Infrastructure.Resend;
 using Npgsql;
@@ -33,6 +35,7 @@ public sealed class TestApp : IAsyncLifetime
 
     public ManualTimeProvider Time { get; } = new(DateTimeOffset.UtcNow);
     public CapturingEmailSender Emails { get; } = new();
+    public FakeApnsClient Apns { get; } = new();
     public IServiceProvider Services => _app!.Services;
     public Dictionary<string, string?> Settings { get; } = [];
 
@@ -61,7 +64,7 @@ public sealed class TestApp : IAsyncLifetime
             }.Concat(Settings));
             builder.Services.AddSingleton<TimeProvider>(Time);
             builder.Services.AddSingleton<IEmailSender>(Emails);
-        });
+        }, services => services.AddSingleton<IApnsClient>(Apns));
 
         await using (var scope = _app.Services.CreateAsyncScope())
             await scope.ServiceProvider.GetRequiredService<NodusDbContext>().Database.MigrateAsync();
@@ -137,6 +140,18 @@ public sealed partial class CapturingEmailSender : IEmailSender
 
     [GeneratedRegex("<strong>(\\d{6})</strong>")]
     private static partial Regex CodePattern();
+}
+
+public sealed class FakeApnsClient : IApnsClient
+{
+    public ConcurrentQueue<(string Token, ApnsAlert Alert)> Sent { get; } = new();
+    public ConcurrentDictionary<string, ApnsOutcome> Outcomes { get; } = new();
+
+    public Task<ApnsResult> SendAsync(string deviceToken, ApnsEnvironment environment, ApnsAlert alert, CancellationToken ct)
+    {
+        Sent.Enqueue((deviceToken, alert));
+        return Task.FromResult(new ApnsResult(Outcomes.GetValueOrDefault(deviceToken, ApnsOutcome.Sent)));
+    }
 }
 
 public static class HttpTestExtensions

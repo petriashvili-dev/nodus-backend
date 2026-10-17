@@ -186,6 +186,72 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("users", (string)null);
                 });
 
+            modelBuilder.Entity("Nodus.Api.Devices.Device", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<string>("ApnsEnvironment")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("apns_environment");
+
+                    b.Property<string>("ApnsToken")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("apns_token");
+
+                    b.Property<string>("AppVersion")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("app_version");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<string>("InstallationId")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("installation_id");
+
+                    b.Property<DateTimeOffset>("LastSeenAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("last_seen_at");
+
+                    b.Property<string>("Platform")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("platform");
+
+                    b.Property<DateTimeOffset?>("TokenInvalidatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("token_invalidated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.HasKey("Id")
+                        .HasName("pk_devices");
+
+                    b.HasIndex("ApnsToken")
+                        .IsUnique()
+                        .HasDatabaseName("ix_devices_apns_token")
+                        .HasFilter("apns_token IS NOT NULL");
+
+                    b.HasIndex("UserId", "InstallationId")
+                        .IsUnique()
+                        .HasDatabaseName("ix_devices_user_id_installation_id");
+
+                    b.ToTable("devices", (string)null);
+                });
+
             modelBuilder.Entity("Nodus.Api.Infrastructure.Outbox.OutboxEvent", b =>
                 {
                     b.Property<long>("Id")
@@ -544,6 +610,16 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_refresh_tokens_users_user_id");
+                });
+
+            modelBuilder.Entity("Nodus.Api.Devices.Device", b =>
+                {
+                    b.HasOne("Nodus.Api.Authentication.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_devices_users_user_id");
                 });
 
             modelBuilder.Entity("Nodus.Api.Nodes.Node", b =>

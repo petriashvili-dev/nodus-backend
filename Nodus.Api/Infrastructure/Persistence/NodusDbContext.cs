@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
+using Nodus.Api.Devices;
 using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Nodes;
 using Nodus.Api.Occurrences;
@@ -24,6 +25,7 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
     public DbSet<SyncChange> SyncChanges => Set<SyncChange>();
     public DbSet<ClientOperation> ClientOperations => Set<ClientOperation>();
     public DbSet<OutboxEvent> OutboxEvents => Set<OutboxEvent>();
+    public DbSet<Device> Devices => Set<Device>();
 
     /// <summary>PostgreSQL <c>timestamptz</c> accepts only UTC offsets; client-supplied instants may carry any offset.</summary>
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -115,6 +117,19 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
             // text, not jsonb: replays must be byte-identical and jsonb reorders keys.
             e.Property(x => x.ResponseBody).HasColumnType("text");
             e.HasIndex(x => x.CreatedAt);
+            e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
+        });
+
+        b.Entity<Device>(e =>
+        {
+            e.HasKey(x => x.Id);
+            e.Property(x => x.InstallationId).HasMaxLength(64);
+            e.Property(x => x.Platform).HasMaxLength(16);
+            e.Property(x => x.ApnsToken).HasMaxLength(200);
+            e.Property(x => x.ApnsEnvironment).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.AppVersion).HasMaxLength(32);
+            e.HasIndex(x => new { x.UserId, x.InstallationId }).IsUnique();
+            e.HasIndex(x => x.ApnsToken).IsUnique().HasFilter("apns_token IS NOT NULL");
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 

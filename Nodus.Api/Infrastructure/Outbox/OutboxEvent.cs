@@ -4,6 +4,9 @@ public static class OutboxEventTypes
 {
     /// <summary>New sync revisions for recipients; fans out as SSE invalidation.</summary>
     public const string SyncChanged = "sync.changed";
+
+    /// <summary>A committed push request; enqueued as a Hangfire job on the notifications queue.</summary>
+    public const string PushRequested = "push.requested";
 }
 
 /// <summary>

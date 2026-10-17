@@ -1,15 +1,19 @@
+using System.Net;
 using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
+using Nodus.Api.Devices;
 using Nodus.Api.Endpoints;
+using Nodus.Api.Infrastructure.Apns;
 using Nodus.Api.Infrastructure.Hangfire;
 using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Infrastructure.Sse;
 using Nodus.Api.Nodes;
+using Nodus.Api.Notifications;
 using Nodus.Api.Occurrences;
 using Nodus.Api.Recurrence;
 using Nodus.Api.Sync;
@@ -23,7 +27,9 @@ public static class NodusApplication
     /// Runs before the application registrations; tests use it to add configuration and to pre-register
     /// replacements, which win because infrastructure defaults are registered with <c>TryAdd</c>.
     /// </param>
-    public static WebApplication Build(string[] args, Action<WebApplicationBuilder>? configure = null)
+    /// <param name="overrideServices">Runs after all registrations; tests replace external clients here.</param>
+    public static WebApplication Build(string[] args, Action<WebApplicationBuilder>? configure = null,
+        Action<IServiceCollection>? overrideServices = null)
     {
         var builder = WebApplication.CreateBuilder(args);
         configure?.Invoke(builder);
@@ -69,10 +75,29 @@ public static class NodusApplication
         services.AddSingleton<IRealtimeHub, InMemoryRealtimeHub>();
         services.AddScoped<IOutboxHandler, SyncChangedOutboxHandler>();
 
+        services.AddOptions<SseOptions>().BindConfiguration(SseOptions.Section);
+        services.AddOptions<ApnsOptions>().BindConfiguration(ApnsOptions.Section);
+        services.AddSingleton<ApnsTokenProvider>();
+        services.AddHttpClient<IApnsClient, ApnsClient>(c =>
+            {
+                c.DefaultRequestVersion = HttpVersion.Version20;
+                c.DefaultVersionPolicy = HttpVersionPolicy.RequestVersionExact;
+                c.Timeout = TimeSpan.FromSeconds(15);
+            })
+            .ConfigurePrimaryHttpMessageHandler(() => new SocketsHttpHandler
+            {
+                PooledConnectionLifetime = TimeSpan.FromMinutes(30),
+                EnableMultipleHttp2Connections = true
+            });
+        services.AddScoped<PushNotifier>();
+        services.AddScoped<PushDeliveryJob>();
+        services.AddScoped<IOutboxHandler, PushRequestedOutboxHandler>();
+
         services.AddNodusHangfire(configuration, connectionString);
 
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgres", tags: ["ready"]);
 
+        overrideServices?.Invoke(services);
         var app = builder.Build();
         app.UseForwardedHeaders();
         app.UseExceptionHandler(e => e.Run(WriteUnhandledErrorAsync));
@@ -87,6 +112,8 @@ public static class NodusApplication
         v1.MapNodeEndpoints();
         v1.MapOccurrenceEndpoints();
         v1.MapSyncEndpoints();
+        v1.MapSseEndpoints();
+        v1.MapDeviceEndpoints();
         app.ScheduleRecurringJobs();
         return app;
     }
