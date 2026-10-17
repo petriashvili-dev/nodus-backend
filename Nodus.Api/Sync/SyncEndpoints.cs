@@ -5,6 +5,7 @@ using Nodus.Api.AiDrafts;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
 using Nodus.Api.Connections;
+using Nodus.Api.Infrastructure.Observability;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Nodes;
 
@@ -40,6 +41,7 @@ public static class SyncEndpoints
         AiDraftService aiDrafts, CancellationToken ct)
     {
         var userId = http.User.GetUserId();
+        NodusMetrics.Sync("delta");
         var from = cursor ?? 0;
         var take = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == userId, ct);
@@ -148,6 +150,7 @@ public static class SyncEndpoints
         CancellationToken ct)
     {
         var userId = http.User.GetUserId();
+        NodusMetrics.Sync("snapshot");
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == userId, ct);
         if (user is null) return ApiResult.NotFound("User");

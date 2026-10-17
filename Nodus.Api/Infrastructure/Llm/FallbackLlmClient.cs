@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using System.Threading.RateLimiting;
 using Microsoft.Extensions.Options;
+using Nodus.Api.Infrastructure.Observability;
 
 namespace Nodus.Api.Infrastructure.Llm;
 
@@ -123,6 +124,9 @@ public sealed class FallbackLlmClient : ILlmClient
 
     private void Log(LlmRequest request, LlmProviderOptions o, LlmErrorCategory? error, TimeSpan latency, LlmResult? result)
     {
+        NodusMetrics.LlmAttempt(o.Name, request.Purpose, error?.ToString() ?? "success", latency);
+        if (result is not null) NodusMetrics.LlmUsage(o.Name, result.PromptTokens, result.CompletionTokens, result.EstimatedCost);
+
         if (error is null)
             _logger.LogInformation(
                 "LLM {Purpose} via {Provider}/{Model}: {LatencyMs} ms, {PromptTokens}+{CompletionTokens} tokens, cost {Cost}",

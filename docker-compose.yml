@@ -1,0 +1,53 @@
+# Single-instance MVP: one API container (HTTP API, SSE, outbox dispatcher, Hangfire server) and PostgreSQL.
+# TLS terminates on a reverse proxy in front of `api`. Secrets come from .env (never committed).
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: nodus
+      POSTGRES_USER: nodus
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U nodus -d nodus"]
+      interval: 5s
+      retries: 20
+
+  migrate:
+    build: { context: ., dockerfile: Nodus.Api/Dockerfile }
+    image: nodus-api
+    command: ["migrate"]
+    environment: &api-env
+      ConnectionStrings__Postgres: Host=postgres;Database=nodus;Username=nodus;Password=${POSTGRES_PASSWORD}
+      Jwt__SigningKey: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY}
+      EmailOtp__HashPepper: ${HASH_PEPPER:?set HASH_PEPPER}
+      Resend__ApiKey: ${RESEND_API_KEY:-}
+      Resend__From: ${RESEND_FROM:-}
+      Apns__KeyId: ${APNS_KEY_ID:-}
+      Apns__TeamId: ${APNS_TEAM_ID:-}
+      Apns__BundleId: ${APNS_BUNDLE_ID:-}
+      Apns__PrivateKey: ${APNS_PRIVATE_KEY:-}
+      Llm__Providers__0__ApiKey: ${NEUROAPI_API_KEY:-}
+      Llm__Providers__0__Model: ${NEUROAPI_MODEL:-}
+      Llm__Providers__1__ApiKey: ${TIMEWEB_API_KEY:-}
+      Llm__Providers__1__Model: ${TIMEWEB_MODEL:-}
+      ReverseProxy__TrustForwardedHeaders: "true"
+      Observability__PrometheusEnabled: "true"
+    depends_on:
+      postgres: { condition: service_healthy }
+    restart: "no"
+
+  api:
+    image: nodus-api
+    restart: unless-stopped
+    environment: *api-env
+    ports:
+      - "127.0.0.1:8080:8080"
+    stop_grace_period: 40s
+    depends_on:
+      migrate: { condition: service_completed_successfully }
+
+volumes:
+  pgdata:

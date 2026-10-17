@@ -6,6 +6,7 @@ using Nodus.Api.Authentication;
 using Nodus.Api.Common;
 using Nodus.Api.Infrastructure.Hangfire;
 using Nodus.Api.Infrastructure.Llm;
+using Nodus.Api.Infrastructure.Observability;
 using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Nodes;
@@ -77,6 +78,7 @@ public sealed class ContinuationRunner(
         suggestion.ShownAt = suggestion.DismissedAt = suggestion.AcceptedAt = null;
         suggestion.LinkedNodeId = null;
         if (calledLlm) suggestion.LlmCalledAt = now;
+        NodusMetrics.Continuation(title is null ? $"skipped_{origin}".ToLowerInvariant() : $"ready_{origin}".ToLowerInvariant());
         suggestion.UpdatedAt = now;
         suggestion.Version++;
         // Skips are invisible to clients; journal only what they can see or must stop seeing.

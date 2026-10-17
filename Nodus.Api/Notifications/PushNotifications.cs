@@ -4,6 +4,7 @@ using Nodus.Api.Common;
 using Nodus.Api.Devices;
 using Nodus.Api.Infrastructure.Apns;
 using Nodus.Api.Infrastructure.Hangfire;
+using Nodus.Api.Infrastructure.Observability;
 using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Infrastructure.Persistence;
 
@@ -71,6 +72,7 @@ public sealed class PushDeliveryJob(NodusDbContext db, IApnsClient apns, TimePro
         foreach (var device in devices)
         {
             var result = await apns.SendAsync(device.ApnsToken!, device.ApnsEnvironment, alert, ct);
+            NodusMetrics.Push(result.Outcome.ToString());
             switch (result.Outcome)
             {
                 case ApnsOutcome.Sent:

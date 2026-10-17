@@ -4,6 +4,7 @@ using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
+using Nodus.Api.Infrastructure.Observability;
 using Nodus.Api.Infrastructure.Persistence;
 
 namespace Nodus.Api.Sync;
@@ -105,6 +106,7 @@ public sealed class IdempotencyFilter : IEndpointFilter
                 "This Idempotency-Key was already used for a different request.");
 
         http.Response.Headers[ReplayedHeaderName] = "true";
+        NodusMetrics.IdempotentReplay();
         return ApiResult.Stored(existing.StatusCode, existing.ResponseBody);
     }
 

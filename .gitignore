@@ -10,3 +10,4 @@ obj/
 Nodus.Api/.idea/
 appsettings.Development.json
 appsettings.Local.json
+.env

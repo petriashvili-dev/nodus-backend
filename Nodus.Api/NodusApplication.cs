@@ -13,6 +13,7 @@ using Nodus.Api.Endpoints;
 using Nodus.Api.Infrastructure.Apns;
 using Nodus.Api.Infrastructure.Hangfire;
 using Nodus.Api.Infrastructure.Llm;
+using Nodus.Api.Infrastructure.Observability;
 using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Infrastructure.Sse;
@@ -42,6 +43,9 @@ public static class NodusApplication
         var configuration = builder.Configuration;
 
         builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = Limits.RequestBodyBytes);
+        builder.AddNodusObservability();
+        // Time for SSE streams and Hangfire workers to finish on SIGTERM.
+        services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(30));
         services.ConfigureHttpJsonOptions(o => NodusJson.Configure(o.SerializerOptions));
         services.AddProblemDetails();
         services.TryAddSingleton(TimeProvider.System);
@@ -119,6 +123,7 @@ public static class NodusApplication
         overrideServices?.Invoke(services);
         var app = builder.Build();
         app.UseForwardedHeaders();
+        app.UseNodusObservability();
         app.UseExceptionHandler(e => e.Run(WriteUnhandledErrorAsync));
         IdempotencyFilter.EnableRequestBuffering(app);
         app.UseAuthentication();
@@ -136,7 +141,6 @@ public static class NodusApplication
         v1.MapConnectionEndpoints();
         v1.MapAiDraftEndpoints();
         v1.MapSuggestionEndpoints();
-        app.ScheduleRecurringJobs();
         return app;
     }
 
@@ -153,6 +157,8 @@ public static class NodusApplication
             await scope.ServiceProvider.GetRequiredService<NodusDbContext>().Database.MigrateAsync();
         }
 
+        // Touches Hangfire storage, so it runs only when serving, never for the migrate command.
+        if (!migrateOnly) app.ScheduleRecurringJobs();
         return migrateOnly;
     }
 

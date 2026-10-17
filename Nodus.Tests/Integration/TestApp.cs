@@ -41,6 +41,9 @@ public sealed class TestApp : IAsyncLifetime
     public IServiceProvider Services => _app!.Services;
     public Dictionary<string, string?> Settings { get; } = [];
 
+    /// <summary>Extra registrations for a hand-made instance (set before <see cref="InitializeAsync"/>).</summary>
+    public Action<IServiceCollection>? ExtraServices { get; init; }
+
     public async Task InitializeAsync()
     {
         await using (var connection = new NpgsqlConnection(ServerConnection))
@@ -71,6 +74,7 @@ public sealed class TestApp : IAsyncLifetime
         {
             services.AddSingleton<IApnsClient>(Apns);
             services.AddSingleton<ILlmClient>(Llm);
+            ExtraServices?.Invoke(services);
         });
 
         await using (var scope = _app.Services.CreateAsyncScope())

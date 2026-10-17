@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Nodus.Api.Infrastructure.Observability;
 using Nodus.Api.Infrastructure.Persistence;
 
 namespace Nodus.Api.Infrastructure.Outbox;
@@ -105,11 +106,14 @@ public sealed class OutboxDispatcher(
                     throw new InvalidOperationException($"No outbox handler for '{outboxEvent.Type}'.");
                 await handler.HandleAsync(outboxEvent, ct);
                 outboxEvent.ProcessedAt = now;
+                NodusMetrics.OutboxDispatched(outboxEvent.Type, "processed", now - outboxEvent.CreatedAt);
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 outboxEvent.Attempts++;
                 outboxEvent.LastError = e.GetType().Name;
+                NodusMetrics.OutboxDispatched(outboxEvent.Type,
+                    outboxEvent.Attempts >= options.Value.MaxAttempts ? "abandoned" : "failed", TimeSpan.Zero);
                 if (outboxEvent.Attempts >= options.Value.MaxAttempts)
                 {
                     outboxEvent.ProcessedAt = outboxEvent.FailedAt = now;
