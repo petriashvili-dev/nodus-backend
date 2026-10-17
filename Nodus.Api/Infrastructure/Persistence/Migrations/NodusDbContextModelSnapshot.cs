@@ -425,6 +425,11 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("bigint")
                         .HasColumnName("sync_revision");
 
+                    b.Property<string>("Timezone")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("timezone");
+
                     b.Property<DateTimeOffset>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("updated_at");

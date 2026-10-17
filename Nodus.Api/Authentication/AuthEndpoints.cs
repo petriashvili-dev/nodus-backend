@@ -20,13 +20,15 @@ public sealed record UserProfile(
     string? Email,
     DateTimeOffset? EmailVerifiedAt,
     string? DisplayName,
+    string? Timezone,
     long Version,
     DateTimeOffset CreatedAt)
 {
     public const int DisplayNameLength = 60;
 
     public static UserProfile From(User user) =>
-        new(user.Id, user.IsAnonymous, user.Email, user.EmailVerifiedAt, user.DisplayName, user.Version, user.CreatedAt);
+        new(user.Id, user.IsAnonymous, user.Email, user.EmailVerifiedAt, user.DisplayName, user.Timezone, user.Version,
+            user.CreatedAt);
 }
 
 public static class AuthEndpoints

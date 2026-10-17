@@ -41,6 +41,10 @@ public sealed record BatchCreateNodesRequest(IReadOnlyList<CreateNodeRequest>? N
 
 public sealed record OccurrenceActionRequest(DateTimeOffset? CompletedAt);
 
+public sealed record ChangeTimezoneRequest(string? Timezone);
+
+public sealed record TimezoneAdaptation(string Timezone, int AdaptedNodes, int SkippedSharedNodes, int SkippedPastNodes);
+
 /// <summary>Validated and normalised template.</summary>
 public sealed record NodeTemplate(
     string Title,

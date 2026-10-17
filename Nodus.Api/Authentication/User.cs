@@ -12,6 +12,9 @@ public sealed class User
 
     public DateTimeOffset? EmailVerifiedAt { get; set; }
 
+    /// <summary>The user's current IANA time zone as last reported by the device (<c>PUT /v1/me/timezone</c>).</summary>
+    public string? Timezone { get; set; }
+
     /// <summary>Name shown to trusted connections and co-members of shared nodes.</summary>
     public string? DisplayName { get; set; }
 

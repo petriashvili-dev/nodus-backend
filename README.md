@@ -96,6 +96,7 @@ Nodus.Api
 | Связь | Приглашение (ссылка или 8-символьный код, 24 ч, одноразовое) → принятие → подтверждение пригласившим. Встречные приглашения сразу дают активную связь. |
 | Прошедший невыполненный экземпляр | Сервер отдаёт `is_past` + `state`; показывать ли просрочку — решает клиент. |
 | Сроки хранения | idempotency 30 дн., sync-журнал 90 дн. (старше → `410` и snapshot), outbox 7 дн., AI-текст 24 ч, черновики 14 дн., кеш продолжений 180 дн. без использования. |
+| Смена часового пояса | `PUT /v1/me/timezone`: свои узлы переходят в новый пояс с тем же местным временем (серии — новой ревизией), прошедшие одноразовые и совместные узлы не трогаются. |
 | Слияние аккаунтов | Не выполняется. Email, занятый другим аккаунтом, → `409 email_already_linked`; вход по email на новом устройстве — `/v1/auth/email/sign-in/*`. |
 
 ## API (`/v1`, JSON snake_case, ошибки — problem details с полем `code`)
@@ -104,7 +105,7 @@ Nodus.Api
 
 | | |
 |---|---|
-| Auth | `POST /auth/anonymous`, `/auth/refresh`, `/auth/logout`, `/auth/email/start`, `/auth/email/verify`, `/auth/email/sign-in/start`, `/auth/email/sign-in/verify`; `GET/PATCH/DELETE /me` |
+| Auth | `POST /auth/anonymous`, `/auth/refresh`, `/auth/logout`, `/auth/email/start`, `/auth/email/verify`, `/auth/email/sign-in/start`, `/auth/email/sign-in/verify`; `GET/PATCH/DELETE /me`, `PUT /me/timezone` |
 | Nodes | `POST /nodes`, `POST /nodes/batch`, `GET/PATCH/DELETE /nodes/{id}`, `PUT /nodes/{id}/occurrences/{key}/untie|retie`, `GET /nodes/{id}/occurrences?from&to` |
 | Лента | `GET /feed?from&to`, `GET /occurrences?from&to` (горизонт локальных уведомлений) |
 | Sync | `GET /sync?cursor&limit`, `GET /sync/snapshot`, `GET /events` (SSE `sync.required`, `Last-Event-ID`) |

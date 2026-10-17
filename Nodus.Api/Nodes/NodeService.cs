@@ -187,6 +187,61 @@ public sealed class NodeService(
         return ApiResult.Ok(OccurrenceStateDto.From(state));
     }
 
+    /// <summary>
+    /// Moves the user's own nodes to <paramref name="timezone"/>, keeping their local wall time: "09:00" stays 09:00,
+    /// now in the new zone. Series get a new revision effective now, so past occurrences keep their historical zone.
+    /// Skipped: shared nodes (their time is common to all participants and must not move because one of them
+    /// travelled) and one-time nodes already in the past (history is not rewritten). The caller commits.
+    /// </summary>
+    public async Task<TimezoneAdaptation> AdaptToTimezoneAsync(Guid userId, string timezone, CancellationToken ct)
+    {
+        var now = time.GetUtcNow();
+        var nodes = await db.Nodes
+            .Where(n => n.OwnerId == userId && n.DeletedAt == null && n.Timezone != timezone)
+            .ToListAsync(ct);
+        var ids = nodes.Select(n => n.Id).ToArray();
+        var shared = (await db.SharedNodeMembers.Where(m => ids.Contains(m.NodeId)).Select(m => m.NodeId).Distinct()
+            .ToListAsync(ct)).ToHashSet();
+
+        var result = new TimezoneAdaptation(timezone, 0, 0, 0);
+        foreach (var node in nodes)
+        {
+            if (shared.Contains(node.Id))
+            {
+                result = result with { SkippedSharedNodes = result.SkippedSharedNodes + 1 };
+                continue;
+            }
+
+            if (node.Type == NodeType.OneTime && IsPast(node, now))
+            {
+                result = result with { SkippedPastNodes = result.SkippedPastNodes + 1 };
+                continue;
+            }
+
+            var template = new NodeTemplate(node.Title, node.Description, timezone, node.Date, node.Time, node.Recurrence,
+                node.TrackYears);
+            if (node.IsSeries)
+            {
+                node.Revision++;
+                db.NodeRevisions.Add(Revision(node, template, now, userId, effectiveFrom: now));
+            }
+
+            Apply(node, template);
+            node.Version++;
+            node.UpdatedAt = now;
+            node.UpdatedBy = userId;
+            unitOfWork.Journal.Record(SyncEntityType.Node, node.Id.ToString(), node.Version, SyncOperation.Upsert, [userId]);
+            result = result with { AdaptedNodes = result.AdaptedNodes + 1 };
+        }
+
+        return result;
+    }
+
+    private static bool IsPast(Node node, DateTimeOffset now) =>
+        node.ScheduledAt is { } at
+            ? at <= now
+            : node.Date is { } date && ZonedTime.StartOfDay(date.AddDays(1), ZonedTime.FindZone(node.Timezone)) <= now;
+
     private async Task<Node?> AddAsync(Guid userId, CreateNodeRequest request, ValidationErrors errors, string prefix,
         CancellationToken ct)
     {

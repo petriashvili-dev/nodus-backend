@@ -134,6 +134,7 @@ public static class NodusApplication
         var v1 = app.MapGroup("/v1").RequireAuthorization();
         v1.MapAuthEndpoints();
         v1.MapNodeEndpoints();
+        v1.MapTimezoneEndpoints();
         v1.MapOccurrenceEndpoints();
         v1.MapSyncEndpoints();
         v1.MapSseEndpoints();

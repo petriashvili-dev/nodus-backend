@@ -55,6 +55,7 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
             e.Property(x => x.Email).HasMaxLength(320);
             e.HasIndex(x => x.Email).IsUnique().HasFilter("email IS NOT NULL");
             e.Property(x => x.DisplayName).HasMaxLength(UserProfile.DisplayNameLength);
+            e.Property(x => x.Timezone).HasMaxLength(64);
             e.Property(x => x.Version).IsConcurrencyToken();
         });
 
