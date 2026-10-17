@@ -1,0 +1,12 @@
+bin/
+obj/
+.DS_Store
+*.user
+.idea/**/workspace.xml
+.idea/**/contentModel.xml
+.idea/.idea.*/.idea/indexLayout.xml
+.idea/.idea.*/.idea/vcs.xml
+.idea/.idea.nodus+.dir/
+Nodus.Api/.idea/
+appsettings.Development.json
+appsettings.Local.json
