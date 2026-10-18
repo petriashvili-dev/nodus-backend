@@ -11,3 +11,6 @@ Nodus.Api/.idea/
 appsettings.Development.json
 appsettings.Local.json
 .env
+
+# codebase-memory-mcp local index
+.codebase-memory/
