@@ -1,3 +1,4 @@
+using System.Net;
 using Microsoft.Extensions.Options;
 using Resend;
 
@@ -16,6 +17,36 @@ public sealed class ResendOptions
 
     public string ApiKey { get; init; } = "";
     public string From { get; init; } = "";
+    public ResendProxyOptions Proxy { get; init; } = new();
+}
+
+/// <summary>
+/// Outgoing proxy for Resend calls only (the host may have no direct route to the Resend API).
+/// Empty <see cref="Url"/> — direct connection. Credentials are optional and come from environment.
+/// </summary>
+public sealed class ResendProxyOptions
+{
+    public string Url { get; init; } = "";
+    public string Username { get; init; } = "";
+    public string Password { get; init; } = "";
+
+    public bool Enabled => !string.IsNullOrWhiteSpace(Url);
+
+    public bool IsValid() => !Enabled || Uri.TryCreate(Url, UriKind.Absolute, out var uri) &&
+        uri.Scheme is "http" or "https" or "socks5" && string.IsNullOrEmpty(uri.UserInfo);
+
+    public SocketsHttpHandler CreateHandler()
+    {
+        var handler = new SocketsHttpHandler { PooledConnectionLifetime = TimeSpan.FromMinutes(15) };
+        if (!Enabled) return handler;
+
+        var proxy = new WebProxy(Url);
+        if (!string.IsNullOrWhiteSpace(Username) && !string.IsNullOrWhiteSpace(Password))
+            proxy.Credentials = new NetworkCredential(Username, Password);
+        handler.Proxy = proxy;
+        handler.UseProxy = true;
+        return handler;
+    }
 }
 
 public sealed class ResendEmailSender(IResend resend, IOptions<ResendOptions> options) : IEmailSender

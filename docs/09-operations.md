@@ -19,6 +19,7 @@
 | Переменные | Без них |
 |---|---|
 | `Resend__ApiKey`, `Resend__From` | письма пишутся в лог вместо отправки |
+| `Resend__Proxy__Url` (`http://`, `https://` или `socks5://`, без логина в URL), `Resend__Proxy__Username`, `Resend__Proxy__Password` | Resend вызывается напрямую. Прокси используется только для Resend; неверный URL — приложение не стартует |
 | `Apns__KeyId`, `Apns__TeamId`, `Apns__BundleId`, `Apns__PrivateKey` (содержимое `.p8`) | push пропускаются |
 | `Llm__Providers__0__ApiKey`, `__Model` (neuroapi), `Llm__Providers__1__ApiKey`, `__Model` (Timeweb) | AI-задания завершаются `ai_unavailable`, продолжения — только по шаблонам |
 | `EmailOtp__ReviewEmails__0`, `EmailOtp__ReviewCode` | демо-аккаунта для App Review нет; задавать **только на время ревью**, см. [02 → Демо-аккаунт](02-authentication.md#демо-аккаунт-для-app-review) |
@@ -230,6 +231,7 @@ dotnet test        # нужен PostgreSQL на 55432 или NODUS_TEST_POSTGRES
 | `Integration/AiDraftTests`, `Ai/*` | AI-задания, fallback LLM, разбор ответа, подтверждение |
 | `Integration/ContinuationTests` | конвейер, кеш, устаревание, принятие |
 | `Integration/PlanTests`, `Plans/*` | доступ по плану и согласию, истечение плана, отказ без сохранения ключа, неявный запуск продолжений, сохранение начатых заданий, sync профиля, команда `plan` |
+| `Integration/ResendProxyTests` | запросы Resend идут через прокси с учётными данными (локальный слушатель вместо прокси), проверка URL |
 | `Integration/AppConfigTests` | публичный конфиг, лимиты, типы значений, изменения без перезапуска, ETag/`304`, команда `config` и проверка ввода |
 | `Integration/ReviewAccountTests` | фиксированный код для демо-аккаунта App Review без письма, лимит попыток, валидация настроек |
 | `Integration/ExportImportTests` | только активные узлы в экспорте, round trip без дублей, дефолты, версии, AI-импорт с предпросмотром |

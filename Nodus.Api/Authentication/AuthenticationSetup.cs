@@ -83,8 +83,12 @@ public static class AuthenticationSetup
         }
         else
         {
+            var proxy = configuration.GetSection($"{ResendOptions.Section}:Proxy").Get<ResendProxyOptions>() ?? new();
+            if (!proxy.IsValid())
+                throw new InvalidOperationException(
+                    "Resend:Proxy:Url must be an absolute http, https or socks5 URL without credentials (use Username/Password).");
             services.Configure<ResendClientOptions>(o => o.ApiToken = configuration[$"{ResendOptions.Section}:ApiKey"]!);
-            services.AddHttpClient<IResend, ResendClient>();
+            services.AddHttpClient<IResend, ResendClient>().ConfigurePrimaryHttpMessageHandler(proxy.CreateHandler);
             services.TryAddScoped<IEmailSender, ResendEmailSender>();
         }
 
