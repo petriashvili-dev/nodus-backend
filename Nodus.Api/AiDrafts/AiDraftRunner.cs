@@ -79,7 +79,7 @@ public sealed class AiDraftRunner(
         Touch(job);
         // The push carries the job id and a neutral text only: never the drafts or the dictated speech.
         push.Request(new PushRequest(job.UserId, $"ai-drafts-{job.Id}", PushKinds.AiDraftsReady,
-            "Черновики готовы", "Проверьте и подтвердите новые узлы.",
+            "Nodus распутал ваши мысли", "Проверьте и подтвердите новые узлы.",
             new Dictionary<string, string> { ["job_id"] = job.Id.ToString() }, CollapseId: $"ai-drafts-{job.Id}"));
         return null;
     }
