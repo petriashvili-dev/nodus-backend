@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Nodus.Api.Common;
 using Nodus.Api.Connections;
 using Nodus.Api.Infrastructure.Persistence;
+using Nodus.Api.Plans;
 using Nodus.Api.Sync;
 
 namespace Nodus.Api.Authentication;
@@ -21,14 +22,20 @@ public sealed record UserProfile(
     DateTimeOffset? EmailVerifiedAt,
     string? DisplayName,
     string? Timezone,
+    IReadOnlyList<string> Features,
+    DateTimeOffset? AiConsentAt,
     long Version,
     DateTimeOffset CreatedAt)
 {
     public const int DisplayNameLength = 60;
 
-    public static UserProfile From(User user) =>
-        new(user.Id, user.IsAnonymous, user.Email, user.EmailVerifiedAt, user.DisplayName, user.Timezone, user.Version,
-            user.CreatedAt);
+    /// <summary>
+    /// <c>features</c> are those of the effective plan; the plan itself is not exposed until the app sells it.
+    /// An expiring plan changes the list without a sync change; clients re-read it on <c>403 feature_not_available</c>.
+    /// </summary>
+    public static UserProfile From(User user, FeatureAccess access) =>
+        new(user.Id, user.IsAnonymous, user.Email, user.EmailVerifiedAt, user.DisplayName, user.Timezone,
+            [.. access.For(user).Order(StringComparer.Ordinal)], user.AiConsentAt, user.Version, user.CreatedAt);
 }
 
 public static class AuthEndpoints
@@ -87,7 +94,7 @@ public static class AuthEndpoints
     /// <summary>Attaches a verified email to the same <c>UserId</c>; no data is moved between accounts.</summary>
     private static async Task<ApiResult> VerifyLinkAsync(
         EmailVerifyRequest request, HttpContext http, NodusDbContext db, IEmailOtpService otp, UnitOfWork unitOfWork,
-        TimeProvider time, CancellationToken ct)
+        FeatureAccess access, TimeProvider time, CancellationToken ct)
     {
         if (!EmailAddress.TryNormalize(request.Email, out var email)) return InvalidEmail();
         var userId = http.User.GetUserId();
@@ -116,7 +123,7 @@ public static class AuthEndpoints
             return EmailTaken();
         }
 
-        return ApiResult.Ok(UserProfile.From(user));
+        return ApiResult.Ok(UserProfile.From(user, access));
     }
 
     private static async Task<ApiResult> StartSignInAsync(EmailStartRequest request, IEmailOtpService otp, CancellationToken ct)
@@ -148,16 +155,16 @@ public static class AuthEndpoints
         return ApiResult.Ok(issued);
     }
 
-    private static async Task<ApiResult> MeAsync(HttpContext http, NodusDbContext db, CancellationToken ct)
+    private static async Task<ApiResult> MeAsync(HttpContext http, NodusDbContext db, FeatureAccess access, CancellationToken ct)
     {
         var userId = http.User.GetUserId();
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == userId, ct);
-        return user is null ? ApiResult.NotFound("User") : ApiResult.Ok(UserProfile.From(user));
+        return user is null ? ApiResult.NotFound("User") : ApiResult.Ok(UserProfile.From(user, access));
     }
 
     /// <summary>The display name is visible to connections, so their feeds receive the change too.</summary>
     private static async Task<ApiResult> UpdateProfileAsync(UpdateProfileRequest request, HttpContext http, NodusDbContext db,
-        UnitOfWork unitOfWork, TimeProvider time, CancellationToken ct)
+        UnitOfWork unitOfWork, FeatureAccess access, TimeProvider time, CancellationToken ct)
     {
         var name = string.IsNullOrWhiteSpace(request.DisplayName) ? null : request.DisplayName.Trim();
         if (name?.Length > UserProfile.DisplayNameLength)
@@ -165,7 +172,7 @@ public static class AuthEndpoints
 
         var userId = http.User.GetUserId();
         var user = await db.Users.SingleAsync(u => u.Id == userId, ct);
-        if (user.DisplayName == name) return ApiResult.Ok(UserProfile.From(user));
+        if (user.DisplayName == name) return ApiResult.Ok(UserProfile.From(user, access));
 
         user.DisplayName = name;
         user.UpdatedAt = time.GetUtcNow();
@@ -179,7 +186,7 @@ public static class AuthEndpoints
                 SyncOperation.Upsert, [connection.Other(userId)]);
 
         await unitOfWork.CommitAsync(ct);
-        return ApiResult.Ok(UserProfile.From(user));
+        return ApiResult.Ok(UserProfile.From(user, access));
     }
 
     private static ApiResult InvalidEmail() =>

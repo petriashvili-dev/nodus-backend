@@ -1,3 +1,5 @@
+using Nodus.Api.Infrastructure.Llm;
+
 namespace Nodus.Api.DataPortability;
 
 public enum ImportJobStatus
@@ -16,7 +18,7 @@ public enum ImportJobStatus
 /// <summary>
 /// Import of a foreign (non-Nodus) file through AI conversion. Nodus files are imported synchronously and need no job.
 /// </summary>
-public sealed class ImportJob
+public sealed class ImportJob : IAiJob
 {
     public Guid Id { get; set; }
     public Guid UserId { get; set; }

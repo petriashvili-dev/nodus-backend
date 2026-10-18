@@ -74,6 +74,7 @@ HardFilter → SemanticRules → Templates → NormalizedCache → LLM
 
 - Не больше `AiContinuations:MaxLlmCallsPerUserPerDay` (30) вызовов модели на пользователя в сутки; сверх лимита — Skip.
 - `AiContinuations:Enabled=false` выключает функцию целиком.
+- Только для владельцев узлов с функцией `ai_continuations` в плане и согласием на AI: без них outbox-событие не пишется, а после debounce доступ проверяется ещё раз — текст узла модели не уходит. Готовые предложения после потери доступа остаются. См. [11-plans-and-features.md](11-plans-and-features.md).
 
 ## Предложение на клиенте
 

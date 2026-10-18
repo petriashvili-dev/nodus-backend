@@ -117,6 +117,17 @@ sequenceDiagram
 
 Все внешние зависимости скрыты за интерфейсами (`ILlmClient`, `IApnsClient`, `IEmailSender`, `IRealtimeHub`, `IBackgroundJobs`), поэтому Hangfire-воркер и SSE-fanout можно позже вынести в отдельные процессы, не меняя модули.
 
+### Точки расширения
+
+| Механизм | Как расширять |
+|---|---|
+| Delta Sync | новая сущность → `SyncEntityType` + `ISyncEntityProvider` в своём модуле ([04](04-sync-and-idempotency.md#delta-sync)) |
+| Форматы импорта | новая версия/формат → `IImportFormatParser` с ключом `(source, version)` ([10](10-export-import.md#версии-формата-и-парсеры)) |
+| AI-задания | новый тип → наследник `AiJobRunner<TJob, TOutput>` (общий цикл: статус, попытки, повтор, блокировка, метрики) |
+| Обработчики outbox | новый тип события → `IOutboxHandler` |
+
+Стратегии по ключу выбираются через `ISelectionResolver` (`Common/Resolvers/`, перенесён из eatee-backend): реализации находятся сканированием сборки, регистрировать вручную не нужно.
+
 ## Модули (`Nodus.Api/`)
 
 | Папка | Ответственность |

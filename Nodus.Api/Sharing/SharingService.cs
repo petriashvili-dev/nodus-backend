@@ -82,17 +82,21 @@ public sealed class SharingService(
             .Join(db.Nodes, m => m.NodeId, n => n.Id, (m, n) => new { Member = m, Node = n })
             .Where(x => (x.Node.OwnerId == a && x.Member.UserId == b) || (x.Node.OwnerId == b && x.Member.UserId == a))
             .ToListAsync(ct);
+        var members = await access.MembersAsync(memberships.Select(x => x.Node.Id).Distinct().ToArray(), ct);
         foreach (var x in memberships)
         {
             db.SharedNodeMembers.Remove(x.Member);
-            await RecordRemovalAsync(x.Node, x.Member.UserId, actorId, ct);
+            RecordRemoval(x.Node, x.Member.UserId, actorId, [x.Node.OwnerId, .. members[x.Node.Id]]);
         }
     }
 
-    private async Task RecordRemovalAsync(Node node, Guid removedUserId, Guid actorId, CancellationToken ct)
+    private async Task RecordRemovalAsync(Node node, Guid removedUserId, Guid actorId, CancellationToken ct) =>
+        RecordRemoval(node, removedUserId, actorId, await access.RecipientsAsync(node, ct));
+
+    private void RecordRemoval(Node node, Guid removedUserId, Guid actorId, IEnumerable<Guid> recipients)
     {
         Touch(node, actorId, time.GetUtcNow());
-        var remaining = (await access.RecipientsAsync(node, ct)).Where(r => r != removedUserId);
+        var remaining = recipients.Where(r => r != removedUserId);
         unitOfWork.Journal.Record(SyncEntityType.Node, node.Id.ToString(), node.Version, SyncOperation.Upsert, remaining);
         unitOfWork.Journal.Record(SyncEntityType.Node, node.Id.ToString(), node.Version, SyncOperation.Delete, [removedUserId]);
     }

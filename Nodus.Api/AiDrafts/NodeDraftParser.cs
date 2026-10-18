@@ -127,11 +127,11 @@ public static class NodeDraftParser
     private static NodeDraftDto? ParseDraft(JsonElement item, int index, string timezone, DateOnly today)
     {
         var issues = new List<DraftIssue>();
-        var title = String(item, "title")?.Trim();
+        var title = item.StringOrNull("title")?.Trim();
         if (string.IsNullOrEmpty(title)) return null;
         if (title.Length > Limits.TitleLength) title = title[..Limits.TitleLength];
 
-        var type = String(item, "type") switch
+        var type = item.StringOrNull("type") switch
         {
             "recurring" => NodeType.Recurring,
             "anniversary" => NodeType.Anniversary,
@@ -140,12 +140,9 @@ public static class NodeDraftParser
         var date = Date(item, "date", issues);
         var time = Time(item, "time", issues);
         var recurrence = type == NodeType.Recurring ? Rule(item, today, issues) : null;
-        var description = String(item, "description")?.Trim();
+        var description = item.StringOrNull("description")?.Trim();
         if (description?.Length > Limits.DescriptionLength) description = description[..Limits.DescriptionLength];
-        bool? trackYears = type == NodeType.Anniversary && item.TryGetProperty("track_years", out var ty) &&
-                           ty.ValueKind is JsonValueKind.True or JsonValueKind.False
-            ? ty.GetBoolean()
-            : null;
+        var trackYears = type == NodeType.Anniversary ? item.BoolOrNull("track_years") : null;
 
         if (type == NodeType.Recurring && recurrence is null)
         {
@@ -167,11 +164,8 @@ public static class NodeDraftParser
         if (type == NodeType.OneTime && date is { } d && d < today)
             issues.Add(new DraftIssue("past_date", "date", "Дата уже прошла."));
 
-        if (item.TryGetProperty("ambiguities", out var ambiguities) && ambiguities.ValueKind == JsonValueKind.Array)
-            issues.AddRange(ambiguities.EnumerateArray()
-                .Where(a => a.ValueKind == JsonValueKind.String && !string.IsNullOrWhiteSpace(a.GetString()))
-                .Take(5)
-                .Select(a => new DraftIssue("ambiguous", null, a.GetString()!.Trim())));
+        issues.AddRange(item.Strings("ambiguities").Where(a => !string.IsNullOrWhiteSpace(a)).Take(5)
+            .Select(a => new DraftIssue("ambiguous", null, a.Trim())));
 
         // The same validation as node creation, so a confirmed draft never fails for a reason we could have shown.
         var errors = new ValidationErrors();
@@ -189,68 +183,27 @@ public static class NodeDraftParser
 
     private static RecurrenceRule? Rule(JsonElement item, DateOnly today, List<DraftIssue> issues)
     {
-        if (!item.TryGetProperty("recurrence", out var r) || r.ValueKind != JsonValueKind.Object) return null;
-        var frequency = String(r, "frequency") switch
-        {
-            "daily" => RecurrenceFrequency.Daily,
-            "weekly" => RecurrenceFrequency.Weekly,
-            "monthly" => RecurrenceFrequency.Monthly,
-            "yearly" => RecurrenceFrequency.Yearly,
-            _ => (RecurrenceFrequency?)null
-        };
-        if (frequency is null) return null;
-
-        var times = r.TryGetProperty("times", out var t) && t.ValueKind == JsonValueKind.Array
-            ? t.EnumerateArray().Select(x => ParseTime(x.ValueKind == JsonValueKind.String ? x.GetString() : null))
-                .Where(x => x is not null).Select(x => x!.Value).ToArray()
-            : [];
-        var weekDays = r.TryGetProperty("week_days", out var w) && w.ValueKind == JsonValueKind.Array
-            ? w.EnumerateArray().Select(x => Enum.TryParse<DayOfWeek>(x.GetString(), true, out var day) ? day : (DayOfWeek?)null)
-                .Where(x => x is not null).Select(x => x!.Value).ToArray()
-            : [];
-        var rule = new RecurrenceRule
-        {
-            Frequency = frequency.Value,
-            Interval = Int(r, "interval") is > 0 and var interval ? interval : 1,
-            StartDate = Date(r, "start_date", issues) ?? today,
-            Until = Date(r, "until", issues),
-            Times = times,
-            WeekDays = frequency == RecurrenceFrequency.Weekly ? weekDays : [],
-            MonthDay = frequency == RecurrenceFrequency.Monthly ? Int(r, "month_day") : null
-        }.Normalize();
-
-        if (!rule.Validate().Any()) return rule;
+        if (item.ObjectOrNull("recurrence") is not { } r) return null;
+        var rule = RecurrenceRuleReader.Read(r, today,
+            field => issues.Add(new DraftIssue("invalid_date", field, "Не удалось распознать дату.")))?.Normalize();
+        if (rule is null || !rule.Validate().Any()) return rule;
         issues.Add(new DraftIssue("invalid_recurrence", "recurrence", "Правило повторения некорректно."));
         return null;
     }
 
-    /// <summary>Null for absent, null or non-integer values (<c>TryGetInt32</c> throws on non-numbers).</summary>
-    private static int? Int(JsonElement e, string name) =>
-        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : null;
-
-    private static string? String(JsonElement e, string name) =>
-        e.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
-
     private static DateOnly? Date(JsonElement e, string name, List<DraftIssue> issues)
     {
-        var raw = String(e, name);
-        if (raw is null) return null;
-        if (DateOnly.TryParseExact(raw, "yyyy-MM-dd", CultureInfo.InvariantCulture, DateTimeStyles.None, out var date)) return date;
-        issues.Add(new DraftIssue("invalid_date", name, "Не удалось распознать дату."));
-        return null;
+        var raw = e.StringOrNull(name);
+        var date = TolerantJson.ParseDate(raw);
+        if (raw is not null && date is null) issues.Add(new DraftIssue("invalid_date", name, "Не удалось распознать дату."));
+        return date;
     }
 
     private static TimeOnly? Time(JsonElement e, string name, List<DraftIssue> issues)
     {
-        var raw = String(e, name);
-        if (raw is null) return null;
-        var time = ParseTime(raw);
-        if (time is null) issues.Add(new DraftIssue("invalid_time", name, "Не удалось распознать время."));
+        var raw = e.StringOrNull(name);
+        var time = TolerantJson.ParseTime(raw);
+        if (raw is not null && time is null) issues.Add(new DraftIssue("invalid_time", name, "Не удалось распознать время."));
         return time;
     }
-
-    private static TimeOnly? ParseTime(string? raw) =>
-        TimeOnly.TryParseExact(raw, ["HH:mm", "H:mm", "HH:mm:ss"], CultureInfo.InvariantCulture, DateTimeStyles.None, out var t)
-            ? new TimeOnly(t.Hour, t.Minute)
-            : null;
 }

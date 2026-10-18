@@ -4,11 +4,13 @@ using Nodus.Api.AiContinuations;
 using Nodus.Api.AiDrafts;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
+using Nodus.Api.Common.Resolvers;
 using Nodus.Api.Connections;
 using Nodus.Api.DataPortability;
 using Nodus.Api.Infrastructure.Observability;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Nodes;
+using Nodus.Api.Plans;
 
 namespace Nodus.Api.Sync;
 
@@ -38,8 +40,7 @@ public static class SyncEndpoints
     /// <c>next_cursor</c> atomically and continues while <c>has_more</c>.
     /// </summary>
     private static async Task<ApiResult> DeltaAsync(long? cursor, int? limit, HttpContext http, NodusDbContext db,
-        NodeAccess access, NodeHistoryLoader histories, NodeDtoFactory dtos, ConnectionService connectionService,
-        AiDraftService aiDrafts, ImportService imports, CancellationToken ct)
+        ISelectionResolver<SyncEntityType, ISyncEntityProvider> providers, CancellationToken ct)
     {
         var userId = http.User.GetUserId();
         NodusMetrics.Sync("delta");
@@ -60,96 +61,34 @@ public static class SyncEndpoints
         var hasMore = page.Count > take;
         if (hasMore) page.RemoveAt(take);
 
+        // Each entity once, with its latest revision in the page.
         var latest = page
             .GroupBy(c => (c.EntityType, c.EntityId))
             .Select(g => g.MaxBy(c => c.Revision)!)
             .OrderBy(c => c.Revision)
             .ToList();
 
-        var stateKeys = latest.Where(c => c.EntityType == SyncEntityType.OccurrenceState)
-            .Select(c => ParseStateId(c.EntityId)).Where(k => k is not null).Select(k => k!.Value).ToList();
-        var nodeIds = latest.Where(c => c.EntityType == SyncEntityType.Node)
-            .Select(c => Guid.TryParse(c.EntityId, out var id) ? id : Guid.Empty)
-            .Concat(stateKeys.Select(k => k.NodeId)).Distinct().ToArray();
-        var nodes = await access.Accessible(userId).AsNoTracking().Where(n => nodeIds.Contains(n.Id)).ToDictionaryAsync(n => n.Id, ct);
-        var liveNodes = nodes.Values.Where(n => n.DeletedAt is null).ToList();
-        var loaded = await histories.LoadAsync(liveNodes, ct);
-        var connectionIds = latest.Where(c => c.EntityType == SyncEntityType.Connection)
-            .Select(c => Guid.TryParse(c.EntityId, out var id) ? id : Guid.Empty).ToArray();
-        var connections = (await connectionService.DtosAsync(
-                await db.Connections.AsNoTracking().Where(c => connectionIds.Contains(c.Id) &&
-                                                               (c.UserLowId == userId || c.UserHighId == userId)).ToListAsync(ct),
-                userId, ct))
-            .ToDictionary(c => c.Id);
-        var jobIds = latest.Where(c => c.EntityType == SyncEntityType.AiDraftJob)
-            .Select(c => Guid.TryParse(c.EntityId, out var id) ? id : Guid.Empty).ToArray();
-        var jobs = (await aiDrafts.DtosAsync(
-                await db.AiDraftJobs.AsNoTracking().Where(j => jobIds.Contains(j.Id) && j.UserId == userId).ToListAsync(ct), ct))
-            .ToDictionary(j => j.Id);
-        var importIds = latest.Where(c => c.EntityType == SyncEntityType.ImportJob)
-            .Select(c => Guid.TryParse(c.EntityId, out var id) ? id : Guid.Empty).ToArray();
-        var importJobs = await db.ImportJobs.AsNoTracking()
-            .Where(j => importIds.Contains(j.Id) && j.UserId == userId).ToDictionaryAsync(j => j.Id, ct);
-        var suggestionIds = latest.Where(c => c.EntityType == SyncEntityType.Suggestion)
-            .Select(c => Guid.TryParse(c.EntityId, out var id) ? id : Guid.Empty).ToArray();
-        var suggestions = await db.NodeSuggestions.AsNoTracking()
-            .Where(s => suggestionIds.Contains(s.Id) && s.UserId == userId).ToDictionaryAsync(s => s.Id, ct);
+        // One bulk load per entity type; types without a provider (older journal entries) are skipped.
+        var states = new Dictionary<(SyncEntityType, string), SyncEntityState>();
+        foreach (var group in latest.GroupBy(c => c.EntityType))
+        {
+            if (providers.GetOrDefault(group.Key) is not { } provider) continue;
+            var loaded = await provider.LoadAsync(userId, group.Select(c => c.EntityId).ToList(), ct);
+            foreach (var change in group)
+                states[(group.Key, change.EntityId)] = loaded.TryGetValue(change.EntityId, out var state)
+                    ? state
+                    : SyncEntityState.Tombstone();
+        }
 
         var changes = new List<SyncChangeDto>(latest.Count);
         foreach (var change in latest)
         {
-            switch (change.EntityType)
-            {
-                case SyncEntityType.User when change.EntityId == userId.ToString():
-                    changes.Add(new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Upsert,
-                        user.Version, UserProfile.From(user)));
-                    break;
-                case SyncEntityType.Node:
-                    var node = Guid.TryParse(change.EntityId, out var nodeId) ? nodes.GetValueOrDefault(nodeId) : null;
-                    changes.Add(node is { DeletedAt: null }
-                        ? new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Upsert,
-                            node.Version, dtos.Create(loaded[node.Id]))
-                        : Tombstone(change, node?.Version));
-                    break;
-                case SyncEntityType.Connection:
-                    var connection = Guid.TryParse(change.EntityId, out var connectionId)
-                        ? connections.GetValueOrDefault(connectionId)
-                        : null;
-                    changes.Add(connection is { Status: not ConnectionStatus.Removed }
-                        ? new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Upsert,
-                            connection.Version, connection)
-                        : Tombstone(change, connection?.Version));
-                    break;
-                case SyncEntityType.AiDraftJob:
-                    var job = Guid.TryParse(change.EntityId, out var jobId) ? jobs.GetValueOrDefault(jobId) : null;
-                    changes.Add(job is not null
-                        ? new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Upsert, job.Version, job)
-                        : Tombstone(change, null));
-                    break;
-                case SyncEntityType.ImportJob:
-                    var importJob = Guid.TryParse(change.EntityId, out var importId) ? importJobs.GetValueOrDefault(importId) : null;
-                    changes.Add(importJob is not null
-                        ? new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Upsert,
-                            importJob.Version, imports.Dto(importJob))
-                        : Tombstone(change, null));
-                    break;
-                case SyncEntityType.Suggestion:
-                    var suggestion = Guid.TryParse(change.EntityId, out var suggestionId)
-                        ? suggestions.GetValueOrDefault(suggestionId)
-                        : null;
-                    changes.Add(suggestion is not null && SuggestionDto.IsVisible(suggestion)
-                        ? new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Upsert,
-                            suggestion.Version, SuggestionDto.From(suggestion))
-                        : Tombstone(change, suggestion?.Version));
-                    break;
-                case SyncEntityType.OccurrenceState:
-                    var key = ParseStateId(change.EntityId);
-                    if (key is null || !loaded.TryGetValue(key.Value.NodeId, out var history)) break; // the node tombstone covers it
-                    if (history.States.TryGetValue(key.Value.Key, out var state))
-                        changes.Add(new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Upsert,
-                            state.Version, OccurrenceStateDto.From(state)));
-                    break;
-            }
+            if (!states.TryGetValue((change.EntityType, change.EntityId), out var state) || state.Skip) continue;
+            changes.Add(state.Data is null
+                ? new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Delete,
+                    state.Version ?? change.EntityVersion, null)
+                : new SyncChangeDto(change.Revision, change.EntityType, change.EntityId, SyncOperation.Upsert,
+                    state.Version ?? change.EntityVersion, state.Data));
         }
 
         var next = page.Count > 0 ? page[^1].Revision : from;
@@ -159,7 +98,7 @@ public static class SyncEndpoints
     /// <summary>Full state for first launch or an expired cursor; the returned cursor continues Delta Sync.</summary>
     private static async Task<ApiResult> SnapshotAsync(HttpContext http, NodusDbContext db, NodeAccess access,
         NodeHistoryLoader histories, NodeDtoFactory dtos, ConnectionService connectionService, AiDraftService aiDrafts,
-        CancellationToken ct)
+        FeatureAccess features, CancellationToken ct)
     {
         var userId = http.User.GetUserId();
         NodusMetrics.Sync("snapshot");
@@ -182,21 +121,12 @@ public static class SyncEndpoints
         return ApiResult.Ok(new
         {
             cursor = user.SyncRevision,
-            user = UserProfile.From(user),
+            user = UserProfile.From(user, features),
             nodes = nodes.Select(n => dtos.Create(loaded[n.Id])).ToList(),
             connections,
             ai_draft_jobs = draftJobs,
             suggestions = readySuggestions.Select(SuggestionDto.From).ToList(),
             occurrence_states = loaded.Values.SelectMany(h => h.States.Values).Select(OccurrenceStateDto.From).ToList()
         });
-    }
-
-    private static SyncChangeDto Tombstone(SyncChange change, long? version) =>
-        new(change.Revision, change.EntityType, change.EntityId, SyncOperation.Delete, version ?? change.EntityVersion, null);
-
-    private static (Guid NodeId, string Key)? ParseStateId(string entityId)
-    {
-        var separator = entityId.IndexOf(':');
-        return separator > 0 && Guid.TryParse(entityId[..separator], out var nodeId) ? (nodeId, entityId[(separator + 1)..]) : null;
     }
 }

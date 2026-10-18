@@ -27,23 +27,53 @@ public sealed class NodeAccess(NodusDbContext db)
         .. await db.SharedNodeMembers.Where(m => m.NodeId == node.Id).Select(m => m.UserId).ToListAsync(ct)
     ];
 
+    /// <summary>Members of several nodes in one query (owners are not included).</summary>
+    public async Task<ILookup<Guid, Guid>> MembersAsync(IReadOnlyCollection<Guid> nodeIds, CancellationToken ct) =>
+        (await db.SharedNodeMembers.Where(m => nodeIds.Contains(m.NodeId)).Select(m => new { m.NodeId, m.UserId }).ToListAsync(ct))
+        .ToLookup(m => m.NodeId, m => m.UserId);
+
     public static bool CanDelete(Node node, Guid userId) => node.OwnerId == userId;
 }
 
-/// <summary>Bulk loading of revisions and states for projections.</summary>
-public sealed class NodeHistoryLoader(NodusDbContext db)
+/// <summary>
+/// Bulk loading of revisions, states and members for projections.
+/// Occurrence states accumulate with history (a daily habit adds ~365 a year), so only states dated from
+/// <c>statesFrom</c> on are loaded — plus every <c>once</c> and undated state. Future states are always loaded
+/// (they are few: occurrences untied in advance), so "next occurrence" lookups stay correct.
+/// </summary>
+public sealed class NodeHistoryLoader(NodusDbContext db, TimeProvider time)
 {
-    public async Task<NodeHistory> LoadAsync(Node node, CancellationToken ct) =>
-        (await LoadAsync([node], ct))[node.Id];
+    /// <summary>
+    /// Margin for "current" views (DTO horizon, feed): they start yesterday in the node's zone, and zones differ from
+    /// UTC by up to 14 hours.
+    /// </summary>
+    private const int CurrentViewMarginDays = 3;
 
-    public async Task<IReadOnlyDictionary<Guid, NodeHistory>> LoadAsync(IReadOnlyCollection<Node> nodes, CancellationToken ct)
+    public DateOnly CurrentViewFrom => DateOnly.FromDateTime(time.GetUtcNow().UtcDateTime).AddDays(-CurrentViewMarginDays);
+
+    /// <summary>States for current views (see <see cref="CurrentViewFrom"/>).</summary>
+    public async Task<NodeHistory> LoadAsync(Node node, CancellationToken ct) =>
+        (await LoadAsync([node], CurrentViewFrom, ct))[node.Id];
+
+    public async Task<IReadOnlyDictionary<Guid, NodeHistory>> LoadAsync(IReadOnlyCollection<Node> nodes, CancellationToken ct) =>
+        await LoadAsync(nodes, CurrentViewFrom, ct);
+
+    public async Task<NodeHistory> LoadAsync(Node node, DateOnly? statesFrom, CancellationToken ct) =>
+        (await LoadAsync([node], statesFrom, ct))[node.Id];
+
+    /// <param name="statesFrom">Earliest occurrence date whose state is needed; null loads the whole history.</param>
+    public async Task<IReadOnlyDictionary<Guid, NodeHistory>> LoadAsync(IReadOnlyCollection<Node> nodes, DateOnly? statesFrom,
+        CancellationToken ct)
     {
         var ids = nodes.Select(n => n.Id).ToArray();
         var seriesIds = nodes.Where(n => n.IsSeries).Select(n => n.Id).ToArray();
         var revisions = seriesIds.Length == 0
             ? []
             : await db.NodeRevisions.AsNoTracking().Where(r => seriesIds.Contains(r.NodeId)).ToListAsync(ct);
-        var states = await db.NodeOccurrenceStates.AsNoTracking().Where(s => ids.Contains(s.NodeId)).ToListAsync(ct);
+        var states = await db.NodeOccurrenceStates.AsNoTracking()
+            .Where(s => ids.Contains(s.NodeId) &&
+                        (statesFrom == null || s.OccurrenceKey == OccurrenceKey.Once || s.Date == null || s.Date >= statesFrom))
+            .ToListAsync(ct);
 
         var members = await db.SharedNodeMembers.AsNoTracking()
             .Where(m => ids.Contains(m.NodeId))

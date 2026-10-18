@@ -11,6 +11,7 @@ using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Nodes;
 using Nodus.Api.Occurrences;
+using Nodus.Api.Plans;
 using Nodus.Api.Sync;
 
 namespace Nodus.Api.AiContinuations;
@@ -38,6 +39,7 @@ public sealed class ContinuationRunner(
     ILlmClient llm,
     IOptions<ContinuationOptions> options,
     IOptions<EmailOtpOptions> secrets,
+    FeatureAccess features,
     TimeProvider time,
     ILogger<ContinuationRunner> logger)
 {
@@ -49,6 +51,8 @@ public sealed class ContinuationRunner(
     {
         var node = await db.Nodes.AsNoTracking().SingleOrDefaultAsync(n => n.Id == nodeId, ct);
         if (node is null || !await StillCurrentAsync(node, contentHash, ct)) return;
+        // The plan or the consent may have gone during the debounce delay.
+        if (await features.CheckAsync(node.OwnerId, Features.AiContinuations, ct) != FeatureCheck.Allowed) return;
 
         var suggestion = await db.NodeSuggestions.SingleOrDefaultAsync(s => s.SourceNodeId == nodeId, ct);
         if (suggestion is { Status: SuggestionStatus.Accepted }) return;

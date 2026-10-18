@@ -31,10 +31,10 @@ docker compose -f docker-compose.local.yml config --quiet
 
 ## Release
 
-1. Tests green on `dev`; merge to `main`.
-2. CI builds and pushes the image (tag `latest` + commit SHA recommended), Dokploy redeploys the compose.
+1. Tests green locally on `dev` (CI does not run on `dev`); merge to `main` — that triggers the workflow.
+2. `.github/workflows/deploy.yml`: `test` job (PostgreSQL service, migration check) → `deploy` job builds the image with `GIT_SHA`/`BUILD_TIME`, pushes `latest` and `<sha>` to GHCR and calls Dokploy (`DOKPLOY_URL`, `DOKPLOY_API_TOKEN`, `DOKPLOY_COMPOSE_ID` secrets).
 3. Before risky migrations: `pg_dump` (see below).
-4. After deploy: `/health/ready` = Healthy, logs without errors, smoke request (`POST /v1/auth/anonymous` on staging).
+4. After deploy: `/version` shows the new commit, `/health/ready` = Healthy, logs without errors, smoke request (`POST /v1/auth/anonymous` on staging).
 
 ## Rollback
 

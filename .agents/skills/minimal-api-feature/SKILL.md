@@ -40,7 +40,7 @@ group.MapPost("/things", (CreateThingRequest request, HttpContext http, ThingSer
   unitOfWork.Journal.Record(SyncEntityType.X, id.ToString(), entity.Version, SyncOperation.Upsert, recipients);
   await unitOfWork.CommitAsync(ct);
   ```
-  New entity type → add to `SyncEntityType` and handle it in `SyncEndpoints` (delta + snapshot if clients need it at first launch).
+  New entity type → add to `SyncEntityType` and an `ISyncEntityProvider` in the module (bulk load + access check; picked up automatically by the resolver); add it to `/sync/snapshot` if clients need it at first launch. Do not edit the delta loop in `SyncEndpoints`.
 - After-commit work → `db.OutboxEvents.Add(OutboxEvent.Create(type, payload, now))` + an `IOutboxHandler` that enqueues via `IBackgroundJobs` (skill `background-jobs`). Pushes → `PushNotifier.Request(...)` with lock-screen-safe text.
 - Time from `TimeProvider`; zones via `ZonedTime`.
 - AI output never creates user data without explicit confirmation.

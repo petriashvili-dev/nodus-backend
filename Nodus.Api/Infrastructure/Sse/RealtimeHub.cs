@@ -15,6 +15,9 @@ public interface IRealtimeHub
     /// <summary>Subscribes one connection; dispose the result to unsubscribe.</summary>
     IRealtimeSubscription Subscribe(Guid userId);
 
+    /// <summary>As <see cref="Subscribe"/>, unless the user already has <paramref name="maxConnections"/> open streams.</summary>
+    IRealtimeSubscription? TrySubscribe(Guid userId, int maxConnections);
+
     void Publish(Guid userId, SyncSignal signal);
 }
 
@@ -31,11 +34,19 @@ public sealed class InMemoryRealtimeHub : IRealtimeHub
 {
     private readonly ConcurrentDictionary<Guid, ConcurrentDictionary<Subscription, byte>> _subscribers = new();
 
-    public IRealtimeSubscription Subscribe(Guid userId)
+    public IRealtimeSubscription Subscribe(Guid userId) => TrySubscribe(userId, int.MaxValue)!;
+
+    public IRealtimeSubscription? TrySubscribe(Guid userId, int maxConnections)
     {
-        var subscription = new Subscription(this, userId);
-        _subscribers.GetOrAdd(userId, _ => new ConcurrentDictionary<Subscription, byte>())[subscription] = 0;
-        return subscription;
+        var connections = _subscribers.GetOrAdd(userId, _ => new ConcurrentDictionary<Subscription, byte>());
+        // Count and add atomically per user, so parallel connects cannot exceed the limit.
+        lock (connections)
+        {
+            if (connections.Count >= maxConnections) return null;
+            var subscription = new Subscription(this, userId);
+            connections[subscription] = 0;
+            return subscription;
+        }
     }
 
     public void Publish(Guid userId, SyncSignal signal)
@@ -47,7 +58,8 @@ public sealed class InMemoryRealtimeHub : IRealtimeHub
     private void Remove(Subscription subscription)
     {
         // The per-user dictionary is kept: removing it could race with a concurrent Subscribe of the same user.
-        if (_subscribers.TryGetValue(subscription.UserId, out var connections)) connections.TryRemove(subscription, out _);
+        if (_subscribers.TryGetValue(subscription.UserId, out var connections))
+            lock (connections) connections.TryRemove(subscription, out _);
 
         subscription.Channel.Writer.TryComplete();
     }

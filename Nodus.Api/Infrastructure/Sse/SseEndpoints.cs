@@ -2,6 +2,7 @@ using System.Globalization;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Nodus.Api.Authentication;
+using Nodus.Api.Common;
 using Nodus.Api.Infrastructure.Persistence;
 
 namespace Nodus.Api.Infrastructure.Sse;
@@ -14,6 +15,9 @@ public sealed class SseOptions
 
     /// <summary>Reconnect delay suggested to clients (<c>retry:</c>); clients add their own backoff on top.</summary>
     public int RetryMilliseconds { get; init; } = 3000;
+
+    /// <summary>Open streams per user (devices × reconnect overlap); more are rejected with 429.</summary>
+    public int MaxConnectionsPerUser { get; init; } = 5;
 }
 
 public static class SseEndpoints
@@ -31,7 +35,14 @@ public static class SseEndpoints
         IHostApplicationLifetime lifetime, CancellationToken requestAborted)
     {
         var userId = http.User.GetUserId();
-        using var subscription = hub.Subscribe(userId);
+        using var subscription = hub.TrySubscribe(userId, options.Value.MaxConnectionsPerUser);
+        if (subscription is null)
+        {
+            await ApiResult.Problem(StatusCodes.Status429TooManyRequests, "too_many_connections",
+                "Too many open event streams for this account; close one and retry.").ExecuteAsync(http);
+            return;
+        }
+
         using var stop = CancellationTokenSource.CreateLinkedTokenSource(requestAborted, lifetime.ApplicationStopping);
         var ct = stop.Token;
 

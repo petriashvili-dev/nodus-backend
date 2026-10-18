@@ -1,7 +1,9 @@
 using Microsoft.EntityFrameworkCore;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
+using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Nodes;
+using Nodus.Api.Recurrence;
 
 namespace Nodus.Api.Occurrences;
 
@@ -25,16 +27,17 @@ public static class OccurrenceEndpoints
     /// Clients refresh it on calendar day change even when nothing was edited.
     /// </summary>
     private static async Task<ApiResult> FeedAsync(DateOnly? from, DateOnly? to, HttpContext http, NodeAccess access,
-        NodeHistoryLoader histories, IRecurrenceProjectionService projection, TimeProvider time, CancellationToken ct)
+        NodeHistoryLoader histories, IRecurrenceProjectionService projection, NodusDbContext db, TimeProvider time,
+        CancellationToken ct)
     {
         var now = time.GetUtcNow();
-        var today = DateOnly.FromDateTime(now.UtcDateTime);
+        var today = await TodayAsync(db, http.User.GetUserId(), now, ct);
         if (Range(from ?? today.AddDays(-1), to ?? today.AddDays(60), MaxRangeDays) is not { } range)
             return RangeError(MaxRangeDays);
         var (start, end) = range;
 
         var nodes = await access.Accessible(http.User.GetUserId()).AsNoTracking().Where(n => n.DeletedAt == null).ToListAsync(ct);
-        var loaded = await histories.LoadAsync(nodes, ct);
+        var loaded = await histories.LoadAsync(nodes, Min(start.AddDays(-1), histories.CurrentViewFrom), ct);
         var items = nodes
             .SelectMany(n => (n.Type == NodeType.OneTime
                     ? projection.Project(loaded[n.Id], start, end, now)
@@ -49,16 +52,17 @@ public static class OccurrenceEndpoints
 
     /// <summary>All occurrences of every accessible node in a window — the horizon for local notifications.</summary>
     private static async Task<ApiResult> BulkAsync(DateOnly? from, DateOnly? to, HttpContext http, NodeAccess access,
-        NodeHistoryLoader histories, IRecurrenceProjectionService projection, TimeProvider time, CancellationToken ct)
+        NodeHistoryLoader histories, IRecurrenceProjectionService projection, NodusDbContext db, TimeProvider time,
+        CancellationToken ct)
     {
         var now = time.GetUtcNow();
-        var today = DateOnly.FromDateTime(now.UtcDateTime);
+        var today = await TodayAsync(db, http.User.GetUserId(), now, ct);
         if (Range(from ?? today.AddDays(-1), to ?? today.AddDays(45), MaxBulkRangeDays) is not { } range)
             return RangeError(MaxBulkRangeDays);
         var (start, end) = range;
 
         var nodes = await access.Accessible(http.User.GetUserId()).AsNoTracking().Where(n => n.DeletedAt == null).ToListAsync(ct);
-        var loaded = await histories.LoadAsync(nodes, ct);
+        var loaded = await histories.LoadAsync(nodes, start.AddDays(-1), ct);
         var occurrences = nodes
             .SelectMany(n => projection.Project(loaded[n.Id], start, end, now))
             .Where(o => o.Date is not null)
@@ -78,8 +82,17 @@ public static class OccurrenceEndpoints
         var node = await access.FindAsync(http.User.GetUserId(), id, ct);
         if (node is null) return ApiResult.NotFound("Node");
 
-        var occurrences = projection.Project(await histories.LoadAsync(node, ct), start, end, time.GetUtcNow());
+        var occurrences = projection.Project(await histories.LoadAsync(node, start.AddDays(-1), ct), start, end, time.GetUtcNow());
         return ApiResult.Ok(new { node_id = id, from = start, to = end, occurrences = occurrences.Select(OccurrenceDto.From) });
+    }
+
+    private static DateOnly Min(DateOnly a, DateOnly b) => a < b ? a : b;
+
+    /// <summary>"Today" for default ranges: in the user's current zone (<c>PUT /v1/me/timezone</c>), UTC if unknown.</summary>
+    private static async Task<DateOnly> TodayAsync(NodusDbContext db, Guid userId, DateTimeOffset now, CancellationToken ct)
+    {
+        var zoneId = await db.Users.Where(u => u.Id == userId).Select(u => u.Timezone).SingleOrDefaultAsync(ct);
+        return ZonedTime.TryFindZone(zoneId, out var zone) ? ZonedTime.LocalDate(now, zone) : DateOnly.FromDateTime(now.UtcDateTime);
     }
 
     private static (DateOnly, DateOnly)? Range(DateOnly from, DateOnly to, int maxDays) =>

@@ -47,7 +47,8 @@ dotnet run -c Release --project Nodus.LoadTests -- http://localhost:5258 50 60
 
 - **Docker:** `docker-compose.yml` — развёртывание по схеме eatee-backend (Dokploy + Traefik, образ из GHCR, `.env` по шаблону `.env.example`): `nodus-db` → одноразовый `nodus-migrate` → `nodus-api`. `/metrics` — только на внутреннем порту 9464. Локально — `docker compose -f docker-compose.local.yml up -d --build`. Схема — [docs/09-operations.md](docs/09-operations.md#схема-развёртывания).
 - **Миграции** под контролем релиза: шаг `docker run nodus-api migrate` (или сервис `migrate` в compose) перед запуском новой версии. API сам миграции не применяет (`Database__MigrateOnStartup=false`).
-- **Health:** `/health/live` (процесс жив), `/health/ready` (PostgreSQL доступен).
+- **Health:** `/health/live` (процесс жив), `/health/ready` (PostgreSQL доступен), `/version` (задеплоенный коммит).
+- **CI/CD:** `.github/workflows/deploy.yml` — при мердже в `main`: тесты на PostgreSQL, и только после них — образ в GHCR и деплой через Dokploy. См. [docs/09-operations.md](docs/09-operations.md#cicd-github-actions).
 - **Graceful shutdown:** 30 с на завершение SSE и воркеров Hangfire; SSE-клиенты переподключаются и догоняют через sync.
 - **Резервные копии:**
   ```bash
@@ -97,6 +98,7 @@ Nodus.Api
 | Прошедший невыполненный экземпляр | Сервер отдаёт `is_past` + `state`; показывать ли просрочку — решает клиент. |
 | Сроки хранения | idempotency 30 дн., sync-журнал 90 дн. (старше → `410` и snapshot), outbox 7 дн., AI-текст 24 ч, черновики 14 дн., кеш продолжений 180 дн. без использования. |
 | Смена часового пояса | `PUT /v1/me/timezone`: свои узлы переходят в новый пояс с тем же местным временем (серии — новой ревизией), прошедшие одноразовые и совместные узлы не трогаются. |
+| Доступ к AI-функциям | План `Standard`/`Plus` в `users` + функции плана в конфигурации `Plans`; клиенту — только `features`. Nodus+ выдаётся командой `plan`, без HTTP. AI требует серверного согласия (`PUT /me/ai-consent`). [ADR 0001](docs/adr/0001-user-plans-and-features.md). |
 | Слияние аккаунтов | Не выполняется. Email, занятый другим аккаунтом, → `409 email_already_linked`; вход по email на новом устройстве — `/v1/auth/email/sign-in/*`. |
 
 ## API (`/v1`, JSON snake_case, ошибки — problem details с полем `code`)
@@ -105,7 +107,7 @@ Nodus.Api
 
 | | |
 |---|---|
-| Auth | `POST /auth/anonymous`, `/auth/refresh`, `/auth/logout`, `/auth/email/start`, `/auth/email/verify`, `/auth/email/sign-in/start`, `/auth/email/sign-in/verify`; `GET/PATCH/DELETE /me`, `PUT /me/timezone` |
+| Auth | `POST /auth/anonymous`, `/auth/refresh`, `/auth/logout`, `/auth/email/start`, `/auth/email/verify`, `/auth/email/sign-in/start`, `/auth/email/sign-in/verify`; `GET/PATCH/DELETE /me`, `PUT /me/timezone`, `PUT /me/ai-consent` |
 | Nodes | `POST /nodes`, `POST /nodes/batch`, `GET/PATCH/DELETE /nodes/{id}`, `PUT /nodes/{id}/occurrences/{key}/untie|retie`, `GET /nodes/{id}/occurrences?from&to` |
 | Лента | `GET /feed?from&to`, `GET /occurrences?from&to` (горизонт локальных уведомлений) |
 | Sync | `GET /sync?cursor&limit`, `GET /sync/snapshot`, `GET /events` (SSE `sync.required`, `Last-Event-ID`) |

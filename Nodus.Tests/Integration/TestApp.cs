@@ -16,6 +16,7 @@ using Nodus.Api.Infrastructure.Apns;
 using Nodus.Api.Infrastructure.Llm;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Infrastructure.Resend;
+using Nodus.Api.Plans;
 using Npgsql;
 
 namespace Nodus.Tests.Integration;
@@ -112,6 +113,23 @@ public sealed class TestApp : IAsyncLifetime
         var accessToken = body.GetProperty("access_token").GetString()!;
         return new TestUser(body.GetProperty("user_id").GetGuid(), accessToken, body.GetProperty("refresh_token").GetString()!,
             CreateClient(accessToken));
+    }
+
+    /// <summary>A user with the plan that includes all AI features and consent to use them.</summary>
+    public async Task<TestUser> CreateAiUserAsync()
+    {
+        var user = await CreateUserAsync();
+        await SetPlanAsync(user.Id, UserPlan.Plus);
+        var consent = await user.Client.SendJsonAsync(HttpMethod.Put, "/v1/me/ai-consent", new { granted = true },
+            Guid.NewGuid().ToString());
+        consent.EnsureSuccessStatusCode();
+        return user;
+    }
+
+    public async Task<PlanChangeOutcome> SetPlanAsync(Guid userId, UserPlan plan, DateTimeOffset? expiresAt = null)
+    {
+        await using var scope = _app!.Services.CreateAsyncScope();
+        return await scope.ServiceProvider.GetRequiredService<PlanService>().SetAsync(userId, null, plan, expiresAt, CancellationToken.None);
     }
 
     public async Task<T> WithDbAsync<T>(Func<NodusDbContext, Task<T>> action)

@@ -71,13 +71,15 @@ public sealed class NodeService(
             .AddIf(items.Select(n => n.Id).Distinct().Count() != items.Count, "nodes", "Node ids must be unique.");
         if (errors.HasErrors) return errors.ToResult();
 
+        // One query for all ids instead of one per node.
+        var ids = items.Select(n => n.Id).ToArray();
+        if (await db.Nodes.Where(n => ids.Contains(n.Id)).Select(n => (Guid?)n.Id).FirstOrDefaultAsync(ct) is { } taken)
+            return NodeExists(taken);
+
         var created = new List<Node>();
         for (var i = 0; i < items.Count; i++)
-        {
-            var node = await AddAsync(userId, items[i], errors, $"nodes[{i}].", ct);
-            if (node is null && !errors.HasErrors) return NodeExists(items[i].Id);
-            if (node is not null) created.Add(node);
-        }
+            if (await AddAsync(userId, items[i], errors, $"nodes[{i}].", ct, idChecked: true) is { } node)
+                created.Add(node);
 
         if (errors.HasErrors) return errors.ToResult();
 
@@ -154,7 +156,9 @@ public sealed class NodeService(
         if (node is null || node.DeletedAt is not null) return ApiResult.NotFound("Node");
 
         var now = time.GetUtcNow();
-        var occurrence = projection.Find(await histories.LoadAsync(node, ct), key, now);
+        // The key may name an old occurrence (offline untie up to 30 days back): load states from its date.
+        var statesFrom = OccurrenceKey.TryParse(key, out _, out var keyDate, out _) ? keyDate : histories.CurrentViewFrom;
+        var occurrence = projection.Find(await histories.LoadAsync(node, statesFrom, ct), key, now);
         if (occurrence is null)
             return ApiResult.Problem(StatusCodes.Status404NotFound, "occurrence_not_found", "The node has no such occurrence.");
 
@@ -252,10 +256,10 @@ public sealed class NodeService(
         {
             Id = Guid.NewGuid(), Type = type, Title = input.Title, Description = input.Description, Timezone = input.Timezone,
             Date = input.Date, Time = input.Time, Recurrence = input.Recurrence, TrackYears = input.TrackYears
-        }, errors, "", ct, triggerContinuations: false);
+        }, errors, "", ct, triggerContinuations: false, idChecked: true); // server-generated id
 
     private async Task<Node?> AddAsync(Guid userId, CreateNodeRequest request, ValidationErrors errors, string prefix,
-        CancellationToken ct, bool triggerContinuations = true)
+        CancellationToken ct, bool triggerContinuations = true, bool idChecked = false)
     {
         errors.AddIf(request.Id == Guid.Empty, prefix + "id", "A client-generated UUID is required.")
             .AddIf(request.Type is null || !Enum.IsDefined(request.Type.Value), prefix + "type", "A node type is required.");
@@ -263,7 +267,7 @@ public sealed class NodeService(
         var template = NodeTemplate.Parse(request.Type.Value, request, errors, prefix);
         if (template is null || errors.HasErrors) return null;
         // Ids are global; an id taken by any user is a conflict (without revealing whose).
-        if (await db.Nodes.AnyAsync(n => n.Id == request.Id, ct)) return null;
+        if (!idChecked && await db.Nodes.AnyAsync(n => n.Id == request.Id, ct)) return null;
 
         var now = time.GetUtcNow();
         var node = new Node
@@ -280,7 +284,7 @@ public sealed class NodeService(
         }
 
         unitOfWork.Journal.Record(SyncEntityType.Node, node.Id.ToString(), node.Version, SyncOperation.Upsert, [userId]);
-        if (triggerContinuations) await continuations.OnNodeChangedAsync(node, ct);
+        if (triggerContinuations) await continuations.OnNodeCreatedAsync(node, ct);
         return node;
     }
 

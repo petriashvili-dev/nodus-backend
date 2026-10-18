@@ -395,6 +395,10 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                         .HasColumnType("uuid")
                         .HasColumnName("id");
 
+                    b.Property<DateTimeOffset?>("AiConsentAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("ai_consent_at");
+
                     b.Property<DateTimeOffset>("CreatedAt")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("created_at");
@@ -416,6 +420,21 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                     b.Property<bool>("IsAnonymous")
                         .HasColumnType("boolean")
                         .HasColumnName("is_anonymous");
+
+                    b.Property<string>("Plan")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("plan");
+
+                    b.Property<DateTimeOffset?>("PlanExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("plan_expires_at");
+
+                    b.Property<string>("PlanSource")
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("plan_source");
 
                     b.Property<long>("SyncPrunedRevision")
                         .HasColumnType("bigint")
@@ -447,7 +466,10 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                         .HasDatabaseName("ix_users_email")
                         .HasFilter("email IS NOT NULL");
 
-                    b.ToTable("users", (string)null);
+                    b.ToTable("users", null, t =>
+                        {
+                            t.HasCheckConstraint("ck_users_plan", "\"plan\" IN ('Standard', 'Plus')");
+                        });
                 });
 
             modelBuilder.Entity("Nodus.Api.Connections.Connection", b =>

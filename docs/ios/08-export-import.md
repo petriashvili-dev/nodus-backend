@@ -37,6 +37,8 @@ GET /v1/me/export
 
 ### Файл другого приложения — через AI
 
+Только при `ai_import` в `user.features` ([07 → Доступ](07-ai.md#доступ-к-ai-функциям-и-согласие)). Без функции экран и выбор файла говорят только о файлах Nodus; если пользователь всё же выбрал чужой файл, сервер ответит `403 feature_not_available` — показать «Можно импортировать только файл, экспортированный из Nodus». Без согласия — `403 ai_consent_required` → экран согласия.
+
 ```json
 202 { "mode": "ai", "job": { "id": "…", "status": "queued", … } }
 ```
@@ -58,7 +60,7 @@ GET /v1/me/export
 |---|---|
 | `400 file_too_large_for_ai` | файл больше 30 000 символов — «Слишком большой файл; разделите его или экспортируйте из Nodus» |
 | `429 ai_quota_exceeded` | 5 AI-импортов в сутки исчерпаны |
-| `status: failed` (`ai_unavailable`, `invalid_ai_response`, `nothing_recognized`, `timed_out`) | «Не получилось разобрать файл» + повторить позже |
+| `status: failed` (`ai_unavailable`, `ai_temporarily_unavailable`, `invalid_ai_response`, `nothing_recognized`, `timed_out`) | «Не получилось разобрать файл» + повторить позже |
 | `status: expired` | предпросмотр не подтверждён за 7 дней — загрузить файл снова |
 
 ## Что важно сказать пользователю

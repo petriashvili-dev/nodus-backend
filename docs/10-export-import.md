@@ -121,7 +121,7 @@ flowchart TD
 
 AI никогда не создаёт узлы сам, поэтому чужой файл сначала превращается в предпросмотр:
 
-1. `POST /v1/me/import` → `202 { "mode": "ai", "job": { "id", "status": "queued" } }`. Содержимое — до `Import:MaxAiInputChars` (30 000 символов, иначе `400 file_too_large_for_ai`); не больше `Import:MaxAiImportsPerDay` (5) в сутки (`429 ai_quota_exceeded`).
+1. `POST /v1/me/import` → `202 { "mode": "ai", "job": { "id", "status": "queued" } }`. Нужны функция `ai_import` в плане и согласие на AI, иначе `403 feature_not_available` / `403 ai_consent_required` ([11-plans-and-features.md](11-plans-and-features.md)); файл Nodus от этого не зависит. Содержимое — до `Import:MaxAiInputChars` (30 000 символов, иначе `400 file_too_large_for_ai`); не больше `Import:MaxAiImportsPerDay` (5) в сутки (`429 ai_quota_exceeded`).
 2. Задача в очереди `imports` отправляет текст модели через тот же [LLM-клиент с fallback](07-ai-drafts.md#llm-клиент-с-двумя-провайдерами). Промпт описывает формат Nodus v1 и требует переносить только то, что есть в файле, пропуская выполненное и архивное. Ответ принудительно получает `source: "nodus"` и текущую `version` и **проверяется тем же парсером v1** с теми же дефолтами.
 3. Статус `ready` + push «Импорт готов к проверке» (`kind: import_ready`, `import_id`). Задание приходит в sync (`entity_type: import_job`):
    ```json
@@ -131,9 +131,9 @@ AI никогда не создаёт узлы сам, поэтому чужой
    ```
 4. Пользователь проверяет и подтверждает всё или часть: `POST …/confirm { "indexes": [0, 2] }` → применение по правилам выше → `completed` с `result`.
 
-Статусы: `queued → processing → ready → completed`; также `failed` (`ai_unavailable`, `invalid_ai_response`, `nothing_recognized`, `timed_out`), `cancelled`, `expired` (предпросмотр не подтверждён за `Import:PreviewRetentionDays`, 7 дней).
+Статусы: `queued → processing → ready → completed`; также `failed` (`ai_unavailable`, `ai_temporarily_unavailable`, `invalid_ai_response`, `nothing_recognized`, `timed_out`, `input_expired`), `cancelled`, `expired` (предпросмотр не подтверждён за `Import:PreviewRetentionDays`, 7 дней).
 
-Текст файла стирается сразу после конвертации (успешной или нет) и не логируется. Временные ошибки модели повторяются до `Import:MaxAttempts` (3) раз.
+Текст файла стирается сразу после конвертации (успешной или нет) и не логируется. Временные ошибки модели повторяются до `Import:MaxAttempts` (3) раз. Жизненный цикл задания общий с голосовыми черновиками (`AiJobRunner`), итоги — в метрике `nodus.ai.jobs` с `kind=import`.
 
 ## Версии формата и парсеры
 

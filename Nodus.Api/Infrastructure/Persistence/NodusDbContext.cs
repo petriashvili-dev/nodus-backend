@@ -58,7 +58,10 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
             e.HasIndex(x => x.Email).IsUnique().HasFilter("email IS NOT NULL");
             e.Property(x => x.DisplayName).HasMaxLength(UserProfile.DisplayNameLength);
             e.Property(x => x.Timezone).HasMaxLength(64);
+            e.Property(x => x.Plan).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.PlanSource).HasConversion<string>().HasMaxLength(16);
             e.Property(x => x.Version).IsConcurrencyToken();
+            e.ToTable(t => t.HasCheckConstraint("ck_users_plan", "\"plan\" IN ('Standard', 'Plus')"));
         });
 
         b.Entity<RefreshToken>(e =>

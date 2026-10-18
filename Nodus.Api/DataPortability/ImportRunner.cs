@@ -27,7 +27,8 @@ public sealed class ImportRequestedOutboxHandler(IBackgroundJobs jobs) : IOutbox
 
 /// <summary>
 /// Converts a foreign file into the current Nodus format with the model, validates the result with the current
-/// format parser and stores it as a preview. Nothing is created until the user confirms.
+/// format parser and stores it as a preview (lifecycle in <see cref="AiJobRunner{TJob,TOutput}"/>). Nothing is created
+/// until the user confirms; the uploaded text is erased when the conversion ends, successfully or not.
 /// </summary>
 public sealed class ImportRunner(
     NodusDbContext db,
@@ -38,72 +39,59 @@ public sealed class ImportRunner(
     IOptions<ImportOptions> options,
     TimeProvider time,
     ILogger<ImportRunner> logger)
+    : AiJobRunner<ImportJob, string>(db, unitOfWork, llm, logger)
 {
     public const string PromptVersion = "import-v1";
 
     [AutomaticRetry(Attempts = 2, DelaysInSeconds = [15, 60])]
     [DisableConcurrentExecution(timeoutInSeconds: 300)]
-    public async Task RunAsync(Guid jobId, CancellationToken ct)
+    public Task RunAsync(Guid jobId, CancellationToken ct) => ExecuteAsync(jobId, ct);
+
+    protected override string Kind => "import";
+    protected override string Table => "import_jobs";
+    protected override int MaxAttempts => options.Value.MaxAttempts;
+
+    protected override bool IsPending(ImportJob job) => job.Status is ImportJobStatus.Queued or ImportJobStatus.Processing;
+    protected override bool IsProcessing(ImportJob job) => job.Status == ImportJobStatus.Processing;
+
+    protected override void MarkProcessing(ImportJob job)
     {
-        var job = await db.ImportJobs.SingleOrDefaultAsync(j => j.Id == jobId, ct);
-        if (job is null || job.Status is not (ImportJobStatus.Queued or ImportJobStatus.Processing)) return;
-        if (job.InputText is null)
-        {
-            await FinishAsync(job, null, "input_expired", ct);
-            return;
-        }
-
         job.Status = ImportJobStatus.Processing;
-        job.Attempts++;
         imports.Touch(job, time.GetUtcNow());
-        await unitOfWork.CommitAsync(ct);
-
-        string preview;
-        try
-        {
-            var result = await llm.GenerateAsync(BuildRequest(job.InputText, job.Timezone, time.GetUtcNow()), ct);
-            preview = Normalize(result.Content, result.Provider);
-        }
-        catch (LlmException e) when (e.IsTransient && job.Attempts < options.Value.MaxAttempts)
-        {
-            logger.LogWarning("Import {JobId} attempt {Attempt} failed: {Category}", job.Id, job.Attempts, e.Category);
-            job.LastError = e.Category.ToString();
-            await db.SaveChangesAsync(ct);
-            throw;
-        }
-        catch (LlmException e)
-        {
-            logger.LogError("Import {JobId} failed: {Category}", job.Id, e.Category);
-            await FinishAsync(job, null, e.Category is LlmErrorCategory.InvalidResponse ? "invalid_ai_response" : "ai_unavailable", ct);
-            return;
-        }
-
-        await using var transaction = await db.Database.BeginTransactionAsync(ct);
-        db.ChangeTracker.Clear();
-        var current = await db.ImportJobs.FromSql($"SELECT * FROM import_jobs WHERE id = {jobId} FOR UPDATE").SingleAsync(ct);
-        if (current.Status != ImportJobStatus.Processing) return; // cancelled meanwhile
-
-        current.Preview = preview;
-        var empty = imports.ParsePreview(current).Candidates.Count == 0;
-        await FinishAsync(current, empty ? null : preview, empty ? "nothing_recognized" : null, ct);
-        await transaction.CommitAsync(ct);
-        unitOfWork.AfterCommit();
     }
 
-    /// <summary>Ready with a preview, or failed; the uploaded text is erased either way.</summary>
-    private async Task FinishAsync(ImportJob job, string? preview, string? error, CancellationToken ct)
+    protected override LlmRequest BuildRequest(ImportJob job, string input) => BuildRequest(input, job.Timezone, time.GetUtcNow());
+
+    protected override string Parse(ImportJob job, LlmResult result) => Normalize(result.Content, result.Provider);
+
+    protected override Task<string?> CompleteAsync(ImportJob job, string preview, LlmResult result, CancellationToken ct)
     {
-        job.Status = error is null ? ImportJobStatus.Ready : ImportJobStatus.Failed;
         job.Preview = preview;
+        if (imports.ParsePreview(job).Candidates.Count == 0) return Task.FromResult<string?>("nothing_recognized");
+
+        job.Status = ImportJobStatus.Ready;
+        job.LastError = null;
+        job.InputText = null;
+        imports.Touch(job, time.GetUtcNow());
+        Notify(job, ready: true);
+        return Task.FromResult<string?>(null);
+    }
+
+    protected override void Fail(ImportJob job, string error)
+    {
+        job.Status = ImportJobStatus.Failed;
+        job.Preview = null;
         job.LastError = error;
         job.InputText = null;
         imports.Touch(job, time.GetUtcNow());
-        push.Request(new PushRequest(job.UserId, $"import-{job.Id}", PushKinds.ImportReady,
-            error is null ? "Импорт готов к проверке" : "Не получилось импортировать файл",
-            error is null ? "Проверьте узлы и подтвердите импорт." : "Откройте Nodus, чтобы попробовать ещё раз.",
-            new Dictionary<string, string> { ["import_id"] = job.Id.ToString() }, CollapseId: $"import-{job.Id}"));
-        await unitOfWork.CommitAsync(ct);
+        Notify(job, ready: false);
     }
+
+    private void Notify(ImportJob job, bool ready) =>
+        push.Request(new PushRequest(job.UserId, $"import-{job.Id}", PushKinds.ImportReady,
+            ready ? "Импорт готов к проверке" : "Не получилось импортировать файл",
+            ready ? "Проверьте узлы и подтвердите импорт." : "Откройте Nodus, чтобы попробовать ещё раз.",
+            new Dictionary<string, string> { ["import_id"] = job.Id.ToString() }, CollapseId: $"import-{job.Id}"));
 
     /// <summary>The model answers with the document; source and version are forced to the current format.</summary>
     internal static string Normalize(string content, string provider)

@@ -3,6 +3,7 @@ using Microsoft.Extensions.Caching.Memory;
 using Nodus.Api.Common;
 using Nodus.Api.Connections;
 using Nodus.Api.Infrastructure.Persistence;
+using Nodus.Api.Nodes;
 using Nodus.Api.Sync;
 
 namespace Nodus.Api.Authentication;
@@ -16,6 +17,7 @@ namespace Nodus.Api.Authentication;
 public sealed class AccountDeletionService(
     NodusDbContext db,
     UnitOfWork unitOfWork,
+    NodeAccess access,
     IMemoryCache cache,
     TimeProvider time,
     ILogger<AccountDeletionService> logger)
@@ -38,14 +40,13 @@ public sealed class AccountDeletionService(
             .Where(n => n.OwnerId != userId && db.SharedNodeMembers.Any(m => m.NodeId == n.Id && m.UserId == userId))
             .ToListAsync(ct);
         var now = time.GetUtcNow();
+        var members = await access.MembersAsync(memberOf.Select(n => n.Id).ToArray(), ct);
         foreach (var node in memberOf)
         {
             node.Version++;
             node.UpdatedAt = now;
-            var recipients = await db.SharedNodeMembers.Where(m => m.NodeId == node.Id && m.UserId != userId)
-                .Select(m => m.UserId).ToListAsync(ct);
             unitOfWork.Journal.Record(SyncEntityType.Node, node.Id.ToString(), node.Version, SyncOperation.Upsert,
-                [node.OwnerId, .. recipients]);
+                [node.OwnerId, .. members[node.Id].Where(m => m != userId)]);
         }
 
         var connections = await db.Connections

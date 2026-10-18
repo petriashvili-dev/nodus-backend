@@ -22,6 +22,7 @@ using Nodus.Api.Infrastructure.Sse;
 using Nodus.Api.Nodes;
 using Nodus.Api.Notifications;
 using Nodus.Api.Occurrences;
+using Nodus.Api.Plans;
 using Nodus.Api.Recurrence;
 using Nodus.Api.Sharing;
 using Nodus.Api.Sync;
@@ -77,6 +78,8 @@ public static class NodusApplication
         services.AddScoped<NodeDtoFactory>();
         services.AddScoped<NodeService>();
 
+        services.AddSelectionResolver<ISyncEntityProvider, SyncEntityType, SyncEntityType>(
+            provider => provider.EntityType, (key, input) => key == input, typeof(NodusApplication).Assembly);
         services.AddScoped<ChangeJournal>();
         services.AddScoped<UnitOfWork>();
         services.AddOptions<OutboxOptions>().BindConfiguration(OutboxOptions.Section);
@@ -106,6 +109,12 @@ public static class NodusApplication
         services.AddScoped<PushNotifier>();
         services.AddScoped<PushDeliveryJob>();
         services.AddScoped<IOutboxHandler, PushRequestedOutboxHandler>();
+
+        services.AddOptions<PlanOptions>().BindConfiguration(PlanOptions.Section)
+            .Validate(o => o.HasOnlyKnownFeatures(), $"Plans: unknown feature; known: {string.Join(", ", Features.All)}.")
+            .ValidateOnStart();
+        services.AddScoped<FeatureAccess>();
+        services.AddScoped<PlanService>();
 
         services.AddNodusLlm();
         services.AddOptions<AiOptions>().BindConfiguration(AiOptions.Section);
@@ -145,6 +154,7 @@ public static class NodusApplication
         v1.MapAuthEndpoints();
         v1.MapNodeEndpoints();
         v1.MapTimezoneEndpoints();
+        v1.MapAiConsentEndpoints();
         v1.MapOccurrenceEndpoints();
         v1.MapSyncEndpoints();
         v1.MapSseEndpoints();
@@ -159,9 +169,16 @@ public static class NodusApplication
     /// <summary>
     /// <c>migrate</c> applies EF Core migrations and exits (release-controlled migrations);
     /// <c>Database:MigrateOnStartup</c> does the same before serving, for local development.
+    /// <c>plan …</c> changes users' plans by hand and exits (see <see cref="PlanCommand"/>).
     /// </summary>
     public static async Task<bool> TryRunCommandAsync(WebApplication app, string[] args)
     {
+        if (args is ["plan", .. var planArgs])
+        {
+            Environment.ExitCode = await PlanCommand.RunAsync(app.Services, planArgs, Console.Out, CancellationToken.None);
+            return true;
+        }
+
         var migrateOnly = args.Contains("migrate");
         if (migrateOnly || app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
         {

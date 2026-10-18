@@ -10,7 +10,7 @@
 | [04-feed-occurrences-notifications.md](04-feed-occurrences-notifications.md) | узлы и экземпляры, лента, горизонт, локальные уведомления, смена дня и пояса, офлайн-созданные узлы |
 | [05-push-and-deeplinks.md](05-push-and-deeplinks.md) | APNs, типы push, маршрутизация, дедупликация |
 | [06-connections-and-sharing.md](06-connections-and-sharing.md) | приглашения, подтверждение связи, совместные узлы, права, конфликты |
-| [07-ai.md](07-ai.md) | голосовые AI-черновики, «Продолжение нити» |
+| [07-ai.md](07-ai.md) | доступ к AI-функциям и согласие, голосовые AI-черновики, «Продолжение нити» |
 | [08-export-import.md](08-export-import.md) | экспорт и импорт в настройках |
 | [09-api-reference.md](09-api-reference.md) | все эндпоинты: запрос, ответ, ошибки |
 

@@ -5,6 +5,7 @@ using Nodus.Api.Common;
 using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Nodes;
+using Nodus.Api.Plans;
 using Nodus.Api.Sync;
 
 namespace Nodus.Api.AiContinuations;
@@ -50,12 +51,20 @@ public sealed class ContinuationTrigger(
     NodusDbContext db,
     UnitOfWork unitOfWork,
     IOptions<ContinuationOptions> options,
+    FeatureAccess features,
     TimeProvider time)
 {
     /// <summary>
     /// Requests the pipeline when the semantic content of a one-time node changed, and marks a no longer matching,
     /// not yet accepted suggestion stale in the same transaction.
     /// </summary>
+    /// <summary>A new node has no suggestion yet, so no lookup is needed.</summary>
+    public async Task OnNodeCreatedAsync(Node node, CancellationToken ct)
+    {
+        if (options.Value.Enabled && node.Type == NodeType.OneTime)
+            await RequestAsync(node, ContinuationRules.ContentHash(node.Title, node.Description), ct);
+    }
+
     public async Task OnNodeChangedAsync(Node node, CancellationToken ct)
     {
         if (!options.Value.Enabled) return;
@@ -74,8 +83,15 @@ public sealed class ContinuationTrigger(
         }
 
         if (node.Type != NodeType.OneTime || node.DeletedAt is not null) return;
+        await RequestAsync(node, hash, ct);
+    }
+
+    /// <summary>Without the feature or AI consent of the owner the node's content never reaches the pipeline.</summary>
+    private async Task RequestAsync(Node node, string hash, CancellationToken ct)
+    {
+        if (await features.CheckAsync(node.OwnerId, Features.AiContinuations, ct) != FeatureCheck.Allowed) return;
         db.OutboxEvents.Add(OutboxEvent.Create(OutboxEventTypes.AiContinuationRequested,
-            JsonSerializer.Serialize(new ContinuationRequestedPayload(node.Id, hash), NodusJson.Options), now));
+            JsonSerializer.Serialize(new ContinuationRequestedPayload(node.Id, hash), NodusJson.Options), time.GetUtcNow()));
     }
 
     public static void Record(UnitOfWork unitOfWork, NodeSuggestion suggestion) =>

@@ -16,11 +16,13 @@
 | `GET /me` | ✓ | — | — | `200` `UserProfile` | |
 | `PATCH /me` | ✓ | ✓ | `{ display_name }` | `200` `UserProfile` | |
 | `PUT /me/timezone` | ✓ | ✓ | `{ timezone }` | `200 { timezone, adapted_nodes, skipped_shared_nodes, skipped_past_nodes }` | |
+| `PUT /me/ai-consent` | ✓ | ✓ | `{ granted }` | `200` `UserProfile` | `400 validation_failed` |
 | `DELETE /me` | ✓ | — | — | `204` | |
 
 ```text
 AuthTokens  { user_id, access_token, access_token_expires_at, refresh_token, refresh_token_expires_at, token_type }
-UserProfile { id, is_anonymous, email, email_verified_at, display_name, timezone, version, created_at }
+UserProfile { id, is_anonymous, email, email_verified_at, display_name, timezone,
+              features: [ai_drafts|ai_continuations|ai_import], ai_consent_at, version, created_at }
 ```
 
 ## Устройства
@@ -83,7 +85,7 @@ OccurrenceStateDto { node_id, key, state, completed_at, version, updated_at, upd
 |---|---|---|
 | `GET /sync?cursor&limit` | `200 { changes: [SyncChange], next_cursor, has_more }` | `410 cursor_expired` |
 | `GET /sync/snapshot` | `200 { cursor, user, nodes, connections, ai_draft_jobs, suggestions, occurrence_states }` | |
-| `GET /events` | `text/event-stream`, события `sync.required` | |
+| `GET /events` | `text/event-stream`, события `sync.required` | `429 too_many_connections` (больше 5 потоков на аккаунт) |
 
 ```text
 SyncChange { revision, entity_type (user|node|occurrence_state|connection|ai_draft_job|suggestion|import_job),
@@ -113,7 +115,7 @@ ConnectionDto { id, user_id (другой человек), display_name, status 
 
 | Метод и путь | IK | Тело | Успех | Ошибки |
 |---|---|---|---|---|
-| `POST /ai/node-drafts` | ✓ | `{ text, timezone, reference_time }` | `202` `AiDraftJobDto` | `429 ai_quota_exceeded` |
+| `POST /ai/node-drafts` | ✓ | `{ text, timezone, reference_time }` | `202` `AiDraftJobDto` | `403 feature_not_available`, `403 ai_consent_required` (оба с `feature`), `429 ai_quota_exceeded` |
 | `GET /ai/node-drafts` | — | — | `200 { jobs: [AiDraftJobDto] }` (queued/processing/ready) | |
 | `GET /ai/node-drafts/{id}` | — | — | `200` `AiDraftJobDto` | `404` |
 | `POST /ai/node-drafts/{id}/confirm` | ✓ | `{ nodes?: [CreateNode] }` | `200 { job, created: { nodes } \| null }` | `409 job_not_ready`, `400`/`409` создания узлов |
@@ -144,7 +146,7 @@ SuggestionDto { id, source_node_id, status (ready|accepted|dismissed), title, de
 | Метод и путь | IK | Тело | Успех | Ошибки |
 |---|---|---|---|---|
 | `GET /me/export` | — | — | `200` файл `nodus` v1 | |
-| `POST /me/import` | ✓ | `{ content, file_name?, timezone? }` | `200 { mode: "direct", format, result }` или `202 { mode: "ai", job: ImportJobDto }` | `400 unsupported_format_version`, `400 file_too_large_for_ai`, `429 ai_quota_exceeded` |
+| `POST /me/import` | ✓ | `{ content, file_name?, timezone? }` | `200 { mode: "direct", format, result }` или `202 { mode: "ai", job: ImportJobDto }` | `400 unsupported_format_version`, `403 feature_not_available`, `403 ai_consent_required` (только чужой файл), `400 file_too_large_for_ai`, `429 ai_quota_exceeded` |
 | `GET /me/imports/{id}` | — | — | `200` `ImportJobDto` | `404` |
 | `POST /me/imports/{id}/confirm` | ✓ | `{ indexes?: [int] }` | `200` `ImportJobDto` (`completed`) | `409 import_not_ready` |
 | `POST /me/imports/{id}/cancel` | ✓ | — | `200` `ImportJobDto` | `404` |

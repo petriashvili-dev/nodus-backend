@@ -24,6 +24,10 @@ This prevents the classic loss between commit and enqueue, and duplicate side ef
 3. Job class (scoped, registered) with `[AutomaticRetry(Attempts = n, DelaysInSeconds = [...])]` and `[DisableConcurrentExecution]` when it mutates one entity.
 4. New queue → `HangfireQueues` + `All`.
 
+## AI-backed jobs
+
+Derive from `Infrastructure/Llm/AiJobRunner<TJob, TOutput>` (entity implements `IAiJob`): it already does the pending check, attempt counting, transient-vs-permanent handling, the `FOR UPDATE` re-check and `nodus.ai.jobs` metrics. Implement only status mapping, `BuildRequest`, `Parse`, `CompleteAsync`, `Fail`.
+
 ## Writing idempotent jobs
 
 - Start by loading state and **exit if already done** (`status is not (Queued or Processing)`).

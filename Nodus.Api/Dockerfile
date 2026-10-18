@@ -13,7 +13,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends tzdata curl lib
 USER $APP_UID
 WORKDIR /app
 COPY --from=build /app/publish .
-ENV ASPNETCORE_URLS=http://+:8080 \
+# Commit and build time for GET /version, to check which build is deployed. Declared last to keep the build cache.
+ARG GIT_SHA=unknown
+ARG BUILD_TIME=unknown
+ENV APP_COMMIT=$GIT_SHA \
+    APP_BUILD_TIME=$BUILD_TIME \
+    ASPNETCORE_URLS=http://+:8080 \
     ASPNETCORE_ENVIRONMENT=Production \
     DOTNET_gcServer=0
 EXPOSE 8080

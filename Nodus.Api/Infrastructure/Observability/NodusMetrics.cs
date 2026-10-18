@@ -19,7 +19,9 @@ public static class NodusMetrics
     private static readonly Counter<long> IdempotentReplays = Meter.CreateCounter<long>("nodus.idempotency.replays");
     private static readonly Counter<long> SyncRequests = Meter.CreateCounter<long>("nodus.sync.requests");
     private static readonly Counter<long> Pushes = Meter.CreateCounter<long>("nodus.push.deliveries");
+    private static readonly Counter<long> AiJobs = Meter.CreateCounter<long>("nodus.ai.jobs", description: "AI job outcomes by kind");
     private static readonly Counter<long> Suggestions = Meter.CreateCounter<long>("nodus.continuations", description: "Continuation pipeline outcomes");
+    private static readonly Counter<long> FeatureDenials = Meter.CreateCounter<long>("nodus.feature.denied", description: "Requests for plan features the user may not use");
 
     public static void LlmAttempt(string provider, string purpose, string outcome, TimeSpan latency)
     {
@@ -47,5 +49,12 @@ public static class NodusMetrics
 
     public static void Push(string outcome) => Pushes.Add(1, new TagList { { "outcome", outcome } });
 
+    /// <summary>Outcome is <c>ready</c>, <c>retry</c>, <c>discarded</c> or an error code (<c>nothing_recognized</c>, <c>ai_unavailable</c>…).</summary>
+    public static void AiJob(string kind, string outcome) => AiJobs.Add(1, new TagList { { "kind", kind }, { "outcome", outcome } });
+
     public static void Continuation(string outcome) => Suggestions.Add(1, new TagList { { "outcome", outcome } });
+
+    /// <summary>Reason is <c>not_in_plan</c> or <c>consent_required</c>.</summary>
+    public static void FeatureDenied(string feature, string reason) =>
+        FeatureDenials.Add(1, new TagList { { "feature", feature }, { "reason", reason } });
 }

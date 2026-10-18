@@ -33,10 +33,11 @@
 | `Connections` | `InviteLifetimeHours` 24, `MaxPendingInvites` 10, `InviteLinkBase` |
 | `Ai` | `MaxTextLength` 4000, `MaxJobsPerDay` 50, `MaxAttempts` 3, `DraftRetentionDays` 14, `InputRetentionHours` 24 |
 | `AiContinuations` | `Enabled`, `DebounceSeconds` 20, `MaxLlmCallsPerUserPerDay` 30 |
+| `Plans` | `Standard:Features` [], `Plus:Features` — все AI-функции; см. [11-plans-and-features.md](11-plans-and-features.md) |
 | `Import` | `MaxContentChars` 200 000, `MaxAiInputChars` 30 000, `MaxNodes` 1000, `MaxAiImportsPerDay` 5, `MaxAttempts` 3, `PreviewRetentionDays` 7 |
 | `Llm` | `TotalTimeoutSeconds` 150, `CircuitFailureThreshold` 5, `CircuitBreakSeconds` 60, `LogContent` false, `Providers[]` |
 | `Outbox` | `PollSeconds` 5, `BatchSize` 100, `MaxAttempts` 10 |
-| `Sse` | `HeartbeatSeconds` 20, `RetryMilliseconds` 3000 |
+| `Sse` | `HeartbeatSeconds` 20, `RetryMilliseconds` 3000, `MaxConnectionsPerUser` 5 |
 | `Retention` | см. ниже |
 | `Observability` | `PrometheusEnabled`, `MetricsPort` (отдельный внутренний порт для `/metrics`), `OtlpEndpoint`, `JsonLogs` |
 | `ReverseProxy` | `TrustForwardedHeaders` — включить за reverse proxy |
@@ -62,6 +63,32 @@ docker run --env-file .env nodus-api migrate   # в контейнере
 ```
 
 Новая миграция: `cd Nodus.Api && dotnet ef migrations add <Name> -o Infrastructure/Persistence/Migrations`.
+
+## Выдача плана Nodus+
+
+```bash
+dotnet run --project Nodus.Api -- plan set --email user@example.com --plan plus [--expires 2027-01-01T00:00:00Z]
+dotnet run --project Nodus.Api -- plan set --user-id <uuid> --plan standard
+dotnet run --project Nodus.Api -- plan list
+docker compose run --rm nodus-api plan set --email user@example.com --plan plus   # на сервере
+```
+
+Подробности и коды выхода — [11-plans-and-features.md](11-plans-and-features.md#выдача-плана).
+
+До первого развёртывания все миграции схлопнуты в одну `InitialCreate`; дальше — только новые миграции поверх, уже выпущенные не редактируются. CI проверяет, что модель и миграции совпадают (`dotnet ef migrations has-pending-model-changes`).
+
+## CI/CD (GitHub Actions)
+
+`.github/workflows/deploy.yml`, по схеме eatee-backend. Запускается только при мердже в `main`; пуши в `dev` CI не запускают — тесты там гоняются локально перед коммитом. Деплои идут по одному (новый мердж ждёт текущий, не отменяет его).
+
+| Задача | Когда | Что делает |
+|---|---|---|
+| `test` | мердж (push) в `main` | restore, build Release, проверка миграций, `dotnet test` на PostgreSQL 16 (сервис в job, `NODUS_TEST_POSTGRES`), отчёт `.trx` в артефактах |
+| `deploy` | тот же запуск, **только после зелёного `test`** | сборка образа (`GIT_SHA`, `BUILD_TIME`), push в GHCR с тегами `latest` и SHA коммита, вызов Dokploy `compose.deploy` |
+
+Секреты репозитория: `DOKPLOY_URL` (например, `https://deploy.example.ru`), `DOKPLOY_API_TOKEN`, `DOKPLOY_COMPOSE_ID`. `GITHUB_TOKEN` выдаётся автоматически (права `packages: write`).
+
+Откат — передеплой предыдущего тега `ghcr.io/petriashvili-dev/nodus-backend:<sha>`.
 
 ## Docker
 
@@ -108,6 +135,7 @@ docker compose -f docker-compose.local.yml up -d --build   # локально
 
 - `GET /health/live` — процесс жив.
 - `GET /health/ready` — есть связь с PostgreSQL.
+- `GET /version` — `{ version, commit, build_time }`: какой коммит задеплоен (из build-args образа).
 - На SIGTERM у SSE и воркеров Hangfire есть 30 с на завершение (`stop_grace_period` 40 с в compose). Клиенты SSE переподключаются и догоняют через sync.
 
 ## Хранение данных (retention)
@@ -164,6 +192,8 @@ OpenTelemetry: `Observability:PrometheusEnabled=true` открывает `/metri
 | `nodus.sync.requests` | `kind` (delta/snapshot) |
 | `nodus.push.deliveries` | `outcome` |
 | `nodus.continuations` | `outcome` (ready/skipped × template/cache/llm) |
+| `nodus.ai.jobs` | `kind` (drafts/import), `outcome` (ready, retry, discarded или код ошибки) |
+| `nodus.feature.denied` | `feature`, `reason` (not_in_plan/consent_required) |
 
 Плюс стандартные метрики ASP.NET Core, HttpClient и runtime.
 
@@ -186,6 +216,7 @@ dotnet test        # нужен PostgreSQL на 55432 или NODUS_TEST_POSTGRES
 | `Integration/SharingTests` | приглашения, встречные приглашения, права участников, отзыв доступа |
 | `Integration/AiDraftTests`, `Ai/*` | AI-задания, fallback LLM, разбор ответа, подтверждение |
 | `Integration/ContinuationTests` | конвейер, кеш, устаревание, принятие |
+| `Integration/PlanTests`, `Plans/*` | доступ по плану и согласию, истечение плана, отказ без сохранения ключа, неявный запуск продолжений, сохранение начатых заданий, sync профиля, команда `plan` |
 | `Integration/ExportImportTests` | только активные узлы в экспорте, round trip без дублей, дефолты, версии, AI-импорт с предпросмотром |
 | `Integration/FailureAndSecurityTests` | повторная доставка outbox, поддельные JWT, перебор id, лимиты тела |
 

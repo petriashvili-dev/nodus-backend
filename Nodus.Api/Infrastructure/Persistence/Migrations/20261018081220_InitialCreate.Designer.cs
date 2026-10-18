@@ -12,8 +12,8 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 namespace Nodus.Api.Infrastructure.Persistence.Migrations
 {
     [DbContext(typeof(NodusDbContext))]
-    [Migration("20261017204259_UserTimezone")]
-    partial class UserTimezone
+    [Migration("20261018081220_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -576,6 +576,85 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("connection_invites", (string)null);
                 });
 
+            modelBuilder.Entity("Nodus.Api.DataPortability.ImportJob", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid")
+                        .HasColumnName("id");
+
+                    b.Property<int>("Attempts")
+                        .HasColumnType("integer")
+                        .HasColumnName("attempts");
+
+                    b.Property<DateTimeOffset?>("CompletedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("completed_at");
+
+                    b.Property<DateTimeOffset>("CreatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("created_at");
+
+                    b.Property<DateTimeOffset>("ExpiresAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("expires_at");
+
+                    b.Property<string>("FileName")
+                        .HasMaxLength(200)
+                        .HasColumnType("character varying(200)")
+                        .HasColumnName("file_name");
+
+                    b.Property<string>("InputText")
+                        .HasColumnType("text")
+                        .HasColumnName("input_text");
+
+                    b.Property<string>("LastError")
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("last_error");
+
+                    b.Property<string>("Preview")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("preview");
+
+                    b.Property<string>("Result")
+                        .HasColumnType("jsonb")
+                        .HasColumnName("result");
+
+                    b.Property<string>("Status")
+                        .IsRequired()
+                        .HasMaxLength(16)
+                        .HasColumnType("character varying(16)")
+                        .HasColumnName("status");
+
+                    b.Property<string>("Timezone")
+                        .IsRequired()
+                        .HasMaxLength(64)
+                        .HasColumnType("character varying(64)")
+                        .HasColumnName("timezone");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("user_id");
+
+                    b.Property<long>("Version")
+                        .IsConcurrencyToken()
+                        .HasColumnType("bigint")
+                        .HasColumnName("version");
+
+                    b.HasKey("Id")
+                        .HasName("pk_import_jobs");
+
+                    b.HasIndex("UserId", "CreatedAt")
+                        .HasDatabaseName("ix_import_jobs_user_id_created_at");
+
+                    b.ToTable("import_jobs", (string)null);
+                });
+
             modelBuilder.Entity("Nodus.Api.Devices.Device", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1091,6 +1170,16 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("fk_connection_invites_users_inviter_id");
+                });
+
+            modelBuilder.Entity("Nodus.Api.DataPortability.ImportJob", b =>
+                {
+                    b.HasOne("Nodus.Api.Authentication.User", null)
+                        .WithMany()
+                        .HasForeignKey("UserId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .IsRequired()
+                        .HasConstraintName("fk_import_jobs_users_user_id");
                 });
 
             modelBuilder.Entity("Nodus.Api.Devices.Device", b =>

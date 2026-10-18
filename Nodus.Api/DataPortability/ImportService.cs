@@ -7,6 +7,7 @@ using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Nodes;
 using Nodus.Api.Occurrences;
+using Nodus.Api.Plans;
 using Nodus.Api.Recurrence;
 using Nodus.Api.Sync;
 
@@ -74,6 +75,7 @@ public sealed class ImportService(
     NodeService nodes,
     ISelectionResolver<ImportFormat, IImportFormatParser> parsers,
     IOptions<ImportOptions> options,
+    FeatureAccess features,
     TimeProvider time)
 {
     /// <summary>
@@ -228,9 +230,11 @@ public sealed class ImportService(
         return new ImportResult(created, duplicates, inactive, issues);
     }
 
+    /// <summary>Files of other apps need the AI import feature; Nodus files are imported directly by everyone.</summary>
     private async Task<ApiResult> QueueAiImportAsync(Guid userId, string content, string? fileName, string timezone,
         CancellationToken ct)
     {
+        if (await features.DenyAsync(userId, Features.AiImport, ct) is { } denied) return denied;
         var o = options.Value;
         if (content.Length > o.MaxAiInputChars)
             return ApiResult.Problem(StatusCodes.Status400BadRequest, "file_too_large_for_ai",

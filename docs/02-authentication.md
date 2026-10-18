@@ -87,11 +87,14 @@ POST /v1/auth/email/sign-in/verify  { "email", "code" }   → токены эт�
 GET   /v1/me
 PATCH /v1/me            { "display_name": "Аня" }              (Idempotency-Key)
 PUT   /v1/me/timezone   { "timezone": "America/New_York" }    (Idempotency-Key)
+PUT   /v1/me/ai-consent { "granted": true }                    (Idempotency-Key)
 ```
 
 `timezone` — текущий часовой пояс устройства; его смена адаптирует узлы, см. [03 → Смена часового пояса](03-nodes-and-recurrence.md#смена-часового-пояса).
 
 `display_name` (до 60 символов) видят доверенные связи и участники совместных узлов. Изменение имени попадает в sync самого пользователя и его связей.
+
+`features` — функции действующего плана, `ai_consent_at` — согласие на передачу данных AI; см. [11-plans-and-features.md](11-plans-and-features.md).
 
 ## Удаление аккаунта
 

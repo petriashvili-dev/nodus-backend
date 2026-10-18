@@ -138,7 +138,7 @@ public class ExportImportTests(TestApp app) : IClassFixture<TestApp>
               ] }
               """
             : """{"nodes":[]}""";
-        var user = await app.CreateUserAsync();
+        var user = await app.CreateAiUserAsync();
         const string csv = "Task,Due\nСдать отчёт,25.10.2026 10:00\nЙога,каждый вторник 19:00\n";
 
         var queued = await ImportAsync(user, csv, "todoist.csv", HttpStatusCode.Accepted);
