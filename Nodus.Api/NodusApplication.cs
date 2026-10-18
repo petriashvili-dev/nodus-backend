@@ -5,6 +5,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Nodus.Api.AiContinuations;
 using Nodus.Api.AiDrafts;
+using Nodus.Api.AppConfig;
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
 using Nodus.Api.Common.Resolvers;
@@ -116,6 +117,9 @@ public static class NodusApplication
         services.AddScoped<FeatureAccess>();
         services.AddScoped<PlanService>();
 
+        services.AddOptions<AppConfigOptions>().BindConfiguration(AppConfigOptions.Section);
+        services.AddScoped<AppConfigService>();
+
         services.AddNodusLlm();
         services.AddOptions<AiOptions>().BindConfiguration(AiOptions.Section);
         services.AddScoped<AiDraftService>();
@@ -152,6 +156,7 @@ public static class NodusApplication
         app.MapHealthEndpoints();
         var v1 = app.MapGroup("/v1").RequireAuthorization();
         v1.MapAuthEndpoints();
+        v1.MapAppConfigEndpoints();
         v1.MapNodeEndpoints();
         v1.MapTimezoneEndpoints();
         v1.MapAiConsentEndpoints();
@@ -169,13 +174,20 @@ public static class NodusApplication
     /// <summary>
     /// <c>migrate</c> applies EF Core migrations and exits (release-controlled migrations);
     /// <c>Database:MigrateOnStartup</c> does the same before serving, for local development.
-    /// <c>plan …</c> changes users' plans by hand and exits (see <see cref="PlanCommand"/>).
+    /// <c>plan …</c> changes users' plans by hand and exits (see <see cref="PlanCommand"/>);
+    /// <c>config …</c> edits client settings (see <see cref="AppConfigCommand"/>).
     /// </summary>
     public static async Task<bool> TryRunCommandAsync(WebApplication app, string[] args)
     {
         if (args is ["plan", .. var planArgs])
         {
             Environment.ExitCode = await PlanCommand.RunAsync(app.Services, planArgs, Console.Out, CancellationToken.None);
+            return true;
+        }
+
+        if (args is ["config", .. var configArgs])
+        {
+            Environment.ExitCode = await AppConfigCommand.RunAsync(app.Services, configArgs, Console.Out, CancellationToken.None);
             return true;
         }
 

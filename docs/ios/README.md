@@ -13,6 +13,7 @@
 | [07-ai.md](07-ai.md) | доступ к AI-функциям и согласие, голосовые AI-черновики, «Продолжение нити» |
 | [08-export-import.md](08-export-import.md) | экспорт и импорт в настройках |
 | [09-api-reference.md](09-api-reference.md) | все эндпоинты: запрос, ответ, ошибки |
+| [10-app-config.md](10-app-config.md) | ссылки, минимальная версия, лимиты с сервера: `GET /v1/app-config` |
 
 ## Порядок внедрения
 
@@ -38,7 +39,7 @@
 | Момент | ISO 8601 UTC, `"2026-10-18T06:30:00+00:00"` |
 | Пояс | IANA (`TimeZone.current.identifier`), например `"Europe/Moscow"` |
 | ID | UUID; id узлов генерирует **клиент** |
-| Авторизация | `Authorization: Bearer <access_token>` на всём, кроме `/auth/anonymous`, `/auth/refresh`, `/auth/logout`, `/auth/email/sign-in/*` |
+| Авторизация | `Authorization: Bearer <access_token>` на всём, кроме `/auth/anonymous`, `/auth/refresh`, `/auth/logout`, `/auth/email/sign-in/*`, `/app-config` |
 | Мутации | заголовок `Idempotency-Key: <UUID>` (кроме `/auth/*`, `/devices`, `DELETE /me`, `DELETE /connections/invites/{id}`) |
 | Корреляция | можно слать `X-Request-Id`; сервер всегда возвращает его в ответе — логировать на клиенте для поддержки |
 

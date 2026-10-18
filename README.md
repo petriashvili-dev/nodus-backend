@@ -100,6 +100,7 @@ Nodus.Api
 | Смена часового пояса | `PUT /v1/me/timezone`: свои узлы переходят в новый пояс с тем же местным временем (серии — новой ревизией), прошедшие одноразовые и совместные узлы не трогаются. |
 | Доступ к AI-функциям | План `Standard`/`Plus` в `users` + функции плана в конфигурации `Plans`; клиенту — только `features`. Nodus+ выдаётся командой `plan`, без HTTP. AI требует серверного согласия (`PUT /me/ai-consent`). [ADR 0001](docs/adr/0001-user-plans-and-features.md). |
 | Вход ревьюера Apple | Для адресов `EmailOtp:ReviewEmails` код = секрет `EmailOtp:ReviewCode`, письмо не отправляется, лимиты те же; включается только на время ревью. |
+| Конфигурация клиента | Таблица `app_config` (ключ → JSON), публичный `GET /v1/app-config` с ETag, правка командой `config` без перезапуска; серверные лимиты отдаются там же только для чтения. |
 | Слияние аккаунтов | Не выполняется. Email, занятый другим аккаунтом, → `409 email_already_linked`; вход по email на новом устройстве — `/v1/auth/email/sign-in/*`. |
 
 ## API (`/v1`, JSON snake_case, ошибки — problem details с полем `code`)
@@ -117,4 +118,5 @@ Nodus.Api
 | Sharing | `POST /nodes/{id}/members`, `DELETE /nodes/{id}/members/{userId}` |
 | AI drafts | `POST /ai/node-drafts`, `GET /ai/node-drafts`, `GET /ai/node-drafts/{jobId}`, `POST /ai/node-drafts/{jobId}/confirm` (с `nodes` — атомарно), `POST /ai/node-drafts/{jobId}/cancel` |
 | Продолжения | `POST /suggestions/{id}/shown`, `/accept` (создаёт узел атомарно), `/dismiss` |
+| App config | `GET /app-config` (без авторизации, ETag / `304`) |
 | Экспорт / импорт | `GET /me/export`, `POST /me/import`, `GET /me/imports/{id}`, `POST /me/imports/{id}/confirm`, `POST /me/imports/{id}/cancel` |

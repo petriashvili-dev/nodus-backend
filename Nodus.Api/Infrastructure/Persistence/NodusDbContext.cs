@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
 using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
+using Nodus.Api.AppConfig;
 using Nodus.Api.AiContinuations;
 using Nodus.Api.AiDrafts;
 using Nodus.Api.Authentication;
@@ -39,6 +40,7 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
     public DbSet<NodeSuggestion> NodeSuggestions => Set<NodeSuggestion>();
     public DbSet<ContinuationCacheEntry> ContinuationCache => Set<ContinuationCacheEntry>();
     public DbSet<ImportJob> ImportJobs => Set<ImportJob>();
+    public DbSet<AppConfigEntry> AppConfig => Set<AppConfigEntry>();
 
     /// <summary>PostgreSQL <c>timestamptz</c> accepts only UTC offsets; client-supplied instants may carry any offset.</summary>
     protected override void ConfigureConventions(ModelConfigurationBuilder configurationBuilder)
@@ -51,6 +53,13 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
 
     protected override void OnModelCreating(ModelBuilder b)
     {
+        b.Entity<AppConfigEntry>(e =>
+        {
+            e.HasKey(x => x.Key);
+            e.Property(x => x.Key).HasMaxLength(AppConfigService.MaxKeyLength);
+            e.Property(x => x.Value).HasColumnType("jsonb");
+        });
+
         b.Entity<User>(e =>
         {
             e.HasKey(x => x.Id);

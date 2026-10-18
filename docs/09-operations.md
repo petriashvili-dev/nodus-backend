@@ -34,6 +34,7 @@
 | `Connections` | `InviteLifetimeHours` 24, `MaxPendingInvites` 10, `InviteLinkBase` |
 | `Ai` | `MaxTextLength` 4000, `MaxJobsPerDay` 50, `MaxAttempts` 3, `DraftRetentionDays` 14, `InputRetentionHours` 24 |
 | `AiContinuations` | `Enabled`, `DebounceSeconds` 20, `MaxLlmCallsPerUserPerDay` 30 |
+| `AppConfig` | `CacheSeconds` 15 — через сколько изменение `config set` увидят клиенты; см. [12-app-config.md](12-app-config.md) |
 | `Plans` | `Standard:Features` [], `Plus:Features` — все AI-функции; см. [11-plans-and-features.md](11-plans-and-features.md) |
 | `Import` | `MaxContentChars` 200 000, `MaxAiInputChars` 30 000, `MaxNodes` 1000, `MaxAiImportsPerDay` 5, `MaxAttempts` 3, `PreviewRetentionDays` 7 |
 | `Llm` | `TotalTimeoutSeconds` 150, `CircuitFailureThreshold` 5, `CircuitBreakSeconds` 60, `LogContent` false, `Providers[]` |
@@ -75,6 +76,17 @@ docker compose run --rm nodus-api plan set --email user@example.com --plan plus 
 ```
 
 Подробности и коды выхода — [11-plans-and-features.md](11-plans-and-features.md#выдача-плана).
+
+## Конфигурация клиента
+
+```bash
+dotnet run --project Nodus.Api -- config set links.privacy_policy https://nodus.app/privacy
+dotnet run --project Nodus.Api -- config set features.import_enabled false --json
+dotnet run --project Nodus.Api -- config list
+docker compose run --rm nodus-api config set min_supported_version 1.2.0   # на сервере
+```
+
+Клиенты увидят изменение в течение `AppConfig:CacheSeconds`. Подробности — [12-app-config.md](12-app-config.md).
 
 До первого развёртывания все миграции схлопнуты в одну `InitialCreate`; дальше — только новые миграции поверх, уже выпущенные не редактируются. CI проверяет, что модель и миграции совпадают (`dotnet ef migrations has-pending-model-changes`).
 
@@ -218,6 +230,7 @@ dotnet test        # нужен PostgreSQL на 55432 или NODUS_TEST_POSTGRES
 | `Integration/AiDraftTests`, `Ai/*` | AI-задания, fallback LLM, разбор ответа, подтверждение |
 | `Integration/ContinuationTests` | конвейер, кеш, устаревание, принятие |
 | `Integration/PlanTests`, `Plans/*` | доступ по плану и согласию, истечение плана, отказ без сохранения ключа, неявный запуск продолжений, сохранение начатых заданий, sync профиля, команда `plan` |
+| `Integration/AppConfigTests` | публичный конфиг, лимиты, типы значений, изменения без перезапуска, ETag/`304`, команда `config` и проверка ввода |
 | `Integration/ReviewAccountTests` | фиксированный код для демо-аккаунта App Review без письма, лимит попыток, валидация настроек |
 | `Integration/ExportImportTests` | только активные узлы в экспорте, round trip без дублей, дефолты, версии, AI-импорт с предпросмотром |
 | `Integration/FailureAndSecurityTests` | повторная доставка outbox, поддельные JWT, перебор id, лимиты тела |

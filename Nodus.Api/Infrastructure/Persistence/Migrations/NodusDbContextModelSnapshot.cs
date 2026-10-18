@@ -276,6 +276,28 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                     b.ToTable("ai_node_drafts", (string)null);
                 });
 
+            modelBuilder.Entity("Nodus.Api.AppConfig.AppConfigEntry", b =>
+                {
+                    b.Property<string>("Key")
+                        .HasMaxLength(100)
+                        .HasColumnType("character varying(100)")
+                        .HasColumnName("key");
+
+                    b.Property<DateTimeOffset>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone")
+                        .HasColumnName("updated_at");
+
+                    b.Property<string>("Value")
+                        .IsRequired()
+                        .HasColumnType("jsonb")
+                        .HasColumnName("value");
+
+                    b.HasKey("Key")
+                        .HasName("pk_app_config");
+
+                    b.ToTable("app_config", (string)null);
+                });
+
             modelBuilder.Entity("Nodus.Api.Authentication.EmailVerificationCode", b =>
                 {
                     b.Property<Guid>("Id")

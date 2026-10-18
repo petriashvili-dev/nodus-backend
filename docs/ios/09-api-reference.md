@@ -2,6 +2,19 @@
 
 Все пути — с префиксом `/v1`. **IK** — нужен `Idempotency-Key`. **Auth** — нужен access-токен. Общие ошибки любого запроса: `400 validation_failed`, `401 unauthorized`, `429 rate_limited`, `500 internal_error`; для IK-запросов также `400 idempotency_key_required`, `422 idempotency_key_reused`, `409 conflict`. Как реагировать — [02](02-outbox-and-errors.md#ответы-и-что-с-ними-делать).
 
+## Конфигурация приложения
+
+| Метод и путь | Auth | IK | Тело | Успех | Ошибки |
+|---|---|---|---|---|---|
+| `GET /app-config` | — | — | — (`If-None-Match`) | `200` `AppConfig` + `ETag`, `304` | |
+
+```text
+AppConfig { values: { "<key>": any JSON }, limits: { ai_draft_text_max_chars, import_max_chars,
+            import_ai_max_chars, display_name_max_chars }, updated_at }
+```
+
+Ключи `values` — [10-app-config.md](10-app-config.md#ключи-values).
+
 ## Авторизация и профиль
 
 | Метод и путь | Auth | IK | Тело | Успех | Ошибки |
