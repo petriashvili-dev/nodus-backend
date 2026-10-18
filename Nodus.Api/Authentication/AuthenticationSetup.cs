@@ -15,7 +15,8 @@ namespace Nodus.Api.Authentication;
 
 public static class AuthenticationSetup
 {
-    public static IServiceCollection AddNodusAuthentication(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddNodusAuthentication(this IServiceCollection services, IConfiguration configuration,
+        IHostEnvironment environment)
     {
         services.AddOptions<JwtOptions>().BindConfiguration(JwtOptions.Section).ValidateDataAnnotations().ValidateOnStart();
         services.AddOptions<EmailOtpOptions>().BindConfiguration(EmailOtpOptions.Section).ValidateDataAnnotations().ValidateOnStart();
@@ -79,6 +80,9 @@ public static class AuthenticationSetup
 
         if (string.IsNullOrWhiteSpace(configuration[$"{ResendOptions.Section}:ApiKey"]))
         {
+            // Without email, codes could not be delivered at all; refuse to start rather than run silently broken.
+            if (environment.IsProduction())
+                throw new InvalidOperationException("Resend:ApiKey is required in Production to deliver email codes.");
             services.TryAddSingleton<IEmailSender, LoggingEmailSender>();
         }
         else

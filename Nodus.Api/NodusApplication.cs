@@ -68,7 +68,7 @@ public static class NodusApplication
                                ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required.");
         services.AddDbContext<NodusDbContext>(o => NodusDbContextFactory.Configure(o, connectionString));
 
-        services.AddNodusAuthentication(configuration);
+        services.AddNodusAuthentication(configuration, builder.Environment);
         services.AddNodusRateLimiting(configuration);
 
         services.AddSingleton<IRecurrenceCalculator, RecurrenceCalculator>();

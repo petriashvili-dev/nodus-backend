@@ -61,12 +61,19 @@ public sealed class ResendEmailSender(IResend resend, IOptions<ResendOptions> op
     }
 }
 
-/// <summary>Development fallback when no Resend key is configured: logs the message instead of sending it.</summary>
-public sealed class LoggingEmailSender(ILogger<LoggingEmailSender> logger) : IEmailSender
+/// <summary>
+/// Fallback when no Resend key is configured (never in Production, see <c>AddNodusAuthentication</c>). Bodies carry
+/// one-time codes, so they are logged only in Development, where a developer needs the code to sign in locally.
+/// </summary>
+public sealed class LoggingEmailSender(ILogger<LoggingEmailSender> logger, IHostEnvironment environment) : IEmailSender
 {
     public Task SendAsync(OutgoingEmail email, CancellationToken ct)
     {
-        logger.LogWarning("Resend is not configured; email '{Subject}' was not sent. Body: {Body}", email.Subject, email.HtmlBody);
+        if (environment.IsDevelopment())
+            logger.LogWarning("Resend is not configured; email '{Subject}' was not sent. Body (Development only): {Body}",
+                email.Subject, email.HtmlBody);
+        else
+            logger.LogWarning("Resend is not configured; email '{Subject}' was not sent", email.Subject);
         return Task.CompletedTask;
     }
 }
