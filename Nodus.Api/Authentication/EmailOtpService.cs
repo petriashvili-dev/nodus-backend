@@ -28,7 +28,8 @@ public sealed class EmailOtpService(
     NodusDbContext db,
     IEmailSender sender,
     IOptions<EmailOtpOptions> options,
-    TimeProvider time) : IEmailOtpService
+    TimeProvider time,
+    ILogger<EmailOtpService> logger) : IEmailOtpService
 {
     private readonly EmailOtpOptions _options = options.Value;
 
@@ -42,12 +43,21 @@ public sealed class EmailOtpService(
         if (await recent.AnyAsync(c => c.CreatedAt > now.AddSeconds(-_options.ResendCooldownSeconds), ct)) return;
         if (await recent.CountAsync(c => c.CreatedAt > now.AddHours(-1), ct) >= _options.MaxCodesPerHour) return;
 
-        var code = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+        // Review codes go through the same storage, expiry and attempt limits; only generation and delivery differ.
+        var review = _options.IsReviewEmail(email);
+        var code = review ? _options.ReviewCode : RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
         db.EmailVerificationCodes.Add(new EmailVerificationCode
         {
             Id = Guid.NewGuid(), Email = email, Purpose = purpose, UserId = purpose == EmailCodePurpose.Link ? userId : null,
             CodeHash = Hash(purpose, email, code), CreatedAt = now, ExpiresAt = now.AddMinutes(_options.CodeExpiryMinutes)
         });
+
+        if (review)
+        {
+            logger.LogWarning("Fixed App Review code issued for {Purpose}", purpose);
+            await db.SaveChangesAsync(ct);
+            return;
+        }
 
         var action = purpose == EmailCodePurpose.Link ? "подтверждения email" : "входа";
         await sender.SendAsync(new OutgoingEmail(email, $"Nodus: код {action}",
