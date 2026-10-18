@@ -1,16 +1,14 @@
 bin/
 obj/
+# Build output written with a Windows path separator (bin\Release).
+bin?Release/
 .DS_Store
 *.user
-.idea/**/workspace.xml
-.idea/**/contentModel.xml
-.idea/.idea.*/.idea/indexLayout.xml
-.idea/.idea.*/.idea/vcs.xml
-.idea/.idea.nodus+.dir/
-Nodus.Api/.idea/
+.idea/
 appsettings.Development.json
 appsettings.Local.json
 .env
+.tools/
 
 # codebase-memory-mcp local index
 .codebase-memory/
