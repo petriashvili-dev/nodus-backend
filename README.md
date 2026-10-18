@@ -41,7 +41,7 @@ dotnet run -c Release --project Nodus.LoadTests -- http://localhost:5258 50 60
 | `Observability__PrometheusEnabled` / `__OtlpEndpoint` | `/metrics` и/или экспорт OTLP |
 | `Hangfire__Enabled`, `Outbox__RunInBackground` | выключаются только в тестах |
 
-Остальные лимиты и сроки — в `appsettings.json` (`Occurrences`, `Retention`, `Ai`, `AiContinuations`, `RateLimits`, `Connections`, `Sse`).
+Здесь — основные. Полный список с описаниями и значениями по умолчанию — [docs/13-environment.md](docs/13-environment.md).
 
 ## Эксплуатация
 

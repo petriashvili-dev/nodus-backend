@@ -2,48 +2,9 @@
 
 ## Конфигурация
 
-Значения по умолчанию — в `Nodus.Api/appsettings.json`. Переопределение — через environment: `Секция__Ключ`, элементы списков по индексу (`Llm__Providers__0__ApiKey`).
+Значения по умолчанию — в `Nodus.Api/appsettings.json`. Переопределение — через environment: `Секция__Ключ`, элементы списков по индексу (`Llm__Providers__0__ApiKey`). Обязательные секреты — `ConnectionStrings__Postgres`, `Jwt__SigningKey`, `EmailOtp__HashPepper`, в `Production` также `Resend__ApiKey`; без них приложение не стартует.
 
-### Обязательные секреты
-
-| Переменная | Что это |
-|---|---|
-| `ConnectionStrings__Postgres` | строка подключения PostgreSQL |
-| `Jwt__SigningKey` | ключ подписи access-токенов, ≥ 32 байт (`openssl rand -base64 48`) |
-| `EmailOtp__HashPepper` | секрет для хешей кодов (email, приглашения) и ключей AI-кеша, ≥ 16 символов. **Не менять** на работающей системе: выданные коды и кеш станут недействительными |
-
-Без них приложение не запустится (проверка при старте).
-
-### Интеграции (необязательные)
-
-| Переменные | Без них |
-|---|---|
-| `Resend__ApiKey`, `Resend__From` | в `Production` приложение **не стартует**; в других окружениях письма не отправляются, в лог пишется только тема (тело с кодом — только в `Development`) |
-| `Resend__Proxy__Url` (`http://`, `https://` или `socks5://`, без логина в URL), `Resend__Proxy__Username`, `Resend__Proxy__Password` | Resend вызывается напрямую. Прокси используется только для Resend; неверный URL — приложение не стартует |
-| `Apns__KeyId`, `Apns__TeamId`, `Apns__BundleId`, `Apns__PrivateKey` (содержимое `.p8`) | push пропускаются |
-| `Llm__Providers__0__ApiKey`, `__Model` (neuroapi), `Llm__Providers__1__ApiKey`, `__Model` (Timeweb) | AI-задания завершаются `ai_unavailable`, продолжения — только по шаблонам |
-| `EmailOtp__ReviewEmails__0`, `EmailOtp__ReviewCode` | демо-аккаунта для App Review нет; задавать **только на время ревью**, см. [02 → Демо-аккаунт](02-authentication.md#демо-аккаунт-для-app-review) |
-
-### Основные параметры
-
-| Секция | Ключевые параметры |
-|---|---|
-| `Jwt` | `AccessTokenMinutes` 15, `RefreshTokenDays` 60, `RotationGraceSeconds` 120 |
-| `EmailOtp` | `CodeExpiryMinutes` 10, `ResendCooldownSeconds` 60, `MaxCodesPerHour` 5, `MaxAttempts` 5, `ReviewEmails` [] |
-| `RateLimits` | `AuthPerMinute` 20, `OtpPerMinute` 10, `AiPerMinute` 10 |
-| `Occurrences` | `HorizonDays` 45, `MaxCompletionBackdateDays` 30 |
-| `Connections` | `InviteLifetimeHours` 24, `MaxPendingInvites` 10, `InviteLinkBase` |
-| `Ai` | `MaxTextLength` 4000, `MaxJobsPerDay` 50, `MaxAttempts` 3, `DraftRetentionDays` 14, `InputRetentionHours` 24 |
-| `AiContinuations` | `Enabled`, `DebounceSeconds` 20, `MaxLlmCallsPerUserPerDay` 30 |
-| `AppConfig` | `CacheSeconds` 15 — через сколько изменение `config set` увидят клиенты; см. [12-app-config.md](12-app-config.md) |
-| `Plans` | `Standard:Features` [], `Plus:Features` — все AI-функции; см. [11-plans-and-features.md](11-plans-and-features.md) |
-| `Import` | `MaxContentChars` 200 000, `MaxAiInputChars` 30 000, `MaxNodes` 1000, `MaxAiImportsPerDay` 5, `MaxAttempts` 3, `PreviewRetentionDays` 7 |
-| `Llm` | `TotalTimeoutSeconds` 150, `CircuitFailureThreshold` 5, `CircuitBreakSeconds` 60, `LogContent` false, `Providers[]` |
-| `Outbox` | `PollSeconds` 5, `BatchSize` 100, `MaxAttempts` 10 |
-| `Sse` | `HeartbeatSeconds` 20, `RetryMilliseconds` 3000, `MaxConnectionsPerUser` 5 |
-| `Retention` | см. ниже |
-| `Observability` | `PrometheusEnabled`, `MetricsPort` (отдельный внутренний порт для `/metrics`), `OtlpEndpoint`, `JsonLogs` |
-| `ReverseProxy` | `TrustForwardedHeaders` — включить за reverse proxy |
+**Все переменные с описаниями и значениями по умолчанию — [13-environment.md](13-environment.md).**
 
 ## Запуск локально
 

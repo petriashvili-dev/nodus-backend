@@ -55,7 +55,7 @@ Happy path, validation, foreign user (`404`), idempotent replay, concurrency/con
 
 ## 7. Docs
 
-- `docs/<area>.md` (Russian, how it works), `README.md` API/decisions tables, `docs/09-operations.md` config.
+- `docs/<area>.md` (Russian, how it works), `README.md` API/decisions tables, `docs/13-environment.md` config.
 - Client contract changed → `docs/ios/` (+ `09-api-reference.md`) and `~/Desktop/nodus_docs/03_Nodus_iOS_Requirements.md`.
 
 ## 8. Verify and hand over
