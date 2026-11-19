@@ -35,7 +35,9 @@ public sealed class TestApp : IAsyncLifetime
     private readonly string _database = $"nodus_test_{Guid.NewGuid():N}";
     private WebApplication? _app;
 
-    public ManualTimeProvider Time { get; } = new(DateTimeOffset.UtcNow);
+    // PostgreSQL stores microseconds; a fixed six-digit fraction round-trips exactly on every OS.
+    public ManualTimeProvider Time { get; } = new(
+        new DateTimeOffset(2026, 10, 18, 12, 0, 0, TimeSpan.Zero).AddTicks(1_234_560));
     public CapturingEmailSender Emails { get; } = new();
     public FakeApnsClient Apns { get; } = new();
     public FakeLlmClient Llm { get; } = new();
