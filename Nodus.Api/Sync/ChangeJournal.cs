@@ -7,7 +7,7 @@ using Nodus.Api.Infrastructure.Persistence;
 namespace Nodus.Api.Sync;
 
 /// <summary>Collects the sync changes of one unit of work and writes them atomically with the data.</summary>
-public sealed class ChangeJournal(NodusDbContext db, TimeProvider time)
+public sealed class ChangeJournal(DatabaseContext db, TimeProvider time)
 {
     private readonly List<(SyncEntityType Type, string Id, long Version, SyncOperation Operation, Guid[] Recipients)> _pending = [];
 
@@ -56,7 +56,7 @@ public sealed class ChangeJournal(NodusDbContext db, TimeProvider time)
 
         if (signals.Count > 0)
             db.OutboxEvents.Add(OutboxEvent.Create(OutboxEventTypes.SyncChanged,
-                JsonSerializer.Serialize(new SyncChangedPayload(signals), NodusJson.Options), now));
+                JsonSerializer.Serialize(new SyncChangedPayload(signals), ApiJson.Options), now));
         _pending.Clear();
     }
 }

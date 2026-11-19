@@ -1,5 +1,5 @@
 using Nodus.Api;
 
-var app = NodusApplication.Build(args);
-if (await NodusApplication.TryRunCommandAsync(app, args)) return;
+var app = ApplicationHost.Build(args);
+if (await ApplicationHost.TryRunCommandAsync(app, args)) return;
 await app.RunAsync();

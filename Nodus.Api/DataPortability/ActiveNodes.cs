@@ -33,5 +33,5 @@ public static class ActiveNodes
     /// </summary>
     public static string Fingerprint(NodeType type, string title, DateOnly? date, TimeOnly? time, RecurrenceRule? rule) =>
         string.Join('|', type, ContinuationRules.Normalize(title), date?.ToString("O"), time?.ToString("HH:mm"),
-            type == NodeType.Recurring && rule is not null ? JsonSerializer.Serialize(rule.Normalize(), NodusJson.Options) : "");
+            type == NodeType.Recurring && rule is not null ? JsonSerializer.Serialize(rule.Normalize(), ApiJson.Options) : "");
 }

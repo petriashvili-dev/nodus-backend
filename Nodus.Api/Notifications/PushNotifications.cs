@@ -1,5 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Nodus.Api.Common;
 using Nodus.Api.Devices;
 using Nodus.Api.Infrastructure.Apns;
@@ -36,25 +37,30 @@ public static class PushKinds
 /// so a push is sent only for committed data and is never lost between commit and enqueue.
 /// APNs is not a delivery guarantee; everything a push announces is also available through sync.
 /// </summary>
-public sealed class PushNotifier(NodusDbContext db, TimeProvider time)
+public sealed class PushNotifier(DatabaseContext db, TimeProvider time, IOptions<ApnsOptions> options)
 {
-    public void Request(PushRequest request) =>
+    public void Request(PushRequest request)
+    {
+        if (!options.Value.Enabled) return;
         db.OutboxEvents.Add(OutboxEvent.Create(OutboxEventTypes.PushRequested,
-            JsonSerializer.Serialize(request, NodusJson.Options), time.GetUtcNow()));
+            JsonSerializer.Serialize(request, ApiJson.Options), time.GetUtcNow()));
+    }
 }
 
-public sealed class PushRequestedOutboxHandler(IBackgroundJobs jobs) : IOutboxHandler
+public sealed class PushRequestedOutboxHandler(IBackgroundJobs jobs, IOptions<ApnsOptions> options) : IOutboxHandler
 {
     public string EventType => OutboxEventTypes.PushRequested;
 
     public Task HandleAsync(OutboxEvent outboxEvent, CancellationToken ct)
     {
-        var request = JsonSerializer.Deserialize<PushRequest>(outboxEvent.Payload, NodusJson.Options)!;
+        if (!options.Value.Enabled) return Task.CompletedTask;
+        var request = JsonSerializer.Deserialize<PushRequest>(outboxEvent.Payload, ApiJson.Options)!;
         return jobs.EnqueueAsync<PushDeliveryJob>(job => job.SendAsync(request, CancellationToken.None), HangfireQueues.Notifications);
     }
 }
 
-public sealed class PushDeliveryJob(NodusDbContext db, IApnsClient apns, TimeProvider time, ILogger<PushDeliveryJob> logger)
+public sealed class PushDeliveryJob(DatabaseContext db, IApnsClient apns, TimeProvider time,
+    ILogger<PushDeliveryJob> logger, IOptions<ApnsOptions> options)
 {
     /// <summary>
     /// Sends to all installations with a token; dead tokens are cleared. Throws (so Hangfire retries) only when nothing
@@ -63,6 +69,7 @@ public sealed class PushDeliveryJob(NodusDbContext db, IApnsClient apns, TimePro
     [global::Hangfire.AutomaticRetry(Attempts = 5)]
     public async Task SendAsync(PushRequest request, CancellationToken ct)
     {
+        if (!options.Value.Enabled) return;
         var devices = await db.Devices.Where(d => d.UserId == request.UserId && d.ApnsToken != null).ToListAsync(ct);
         var alert = new ApnsAlert(request.Title, request.Body,
             new Dictionary<string, string>(request.Data) { ["event_id"] = request.EventId, ["kind"] = request.Kind },
@@ -73,7 +80,7 @@ public sealed class PushDeliveryJob(NodusDbContext db, IApnsClient apns, TimePro
         foreach (var device in devices)
         {
             var result = await apns.SendAsync(device.ApnsToken!, device.ApnsEnvironment, alert, ct);
-            NodusMetrics.Push(result.Outcome.ToString());
+            ApiMetrics.Push(result.Outcome.ToString());
             switch (result.Outcome)
             {
                 case ApnsOutcome.Sent:
@@ -84,6 +91,8 @@ public sealed class PushDeliveryJob(NodusDbContext db, IApnsClient apns, TimePro
                 case ApnsOutcome.InvalidToken:
                     device.ApnsToken = null;
                     device.TokenInvalidatedAt = time.GetUtcNow();
+                    break;
+                case ApnsOutcome.Skipped:
                     break;
                 case ApnsOutcome.Retryable:
                     transient++;

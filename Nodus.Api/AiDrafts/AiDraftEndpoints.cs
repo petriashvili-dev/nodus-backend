@@ -1,5 +1,6 @@
 using Nodus.Api.Authentication;
 using Nodus.Api.Common;
+using Nodus.Api.Plans;
 using Nodus.Api.Sync;
 
 namespace Nodus.Api.AiDrafts;
@@ -12,7 +13,7 @@ public static class AiDraftEndpoints
 
         drafts.MapPost("/", (CreateDraftJobRequest request, HttpContext http, AiDraftService service, CancellationToken ct) =>
                 service.CreateAsync(http.User.GetUserId(), request, ct))
-            .WithIdempotency().RequireRateLimiting(RateLimits.Ai);
+            .RequireFeature(Features.AiDrafts).WithIdempotency().RequireRateLimiting(RateLimits.Ai);
 
         drafts.MapGet("/", (HttpContext http, AiDraftService service, CancellationToken ct) =>
             service.ListOpenAsync(http.User.GetUserId(), ct));

@@ -213,16 +213,24 @@ public class NodeSyncTests(TestApp app) : IClassFixture<TestApp>
     }
 
     [Fact]
-    public async Task Feed_shows_today_and_next_for_series()
+    public async Task Feed_shows_one_active_occurrence_and_advances_after_untie()
     {
         app.Time.Set(DateTimeOffset.Parse("2026-10-17T10:00:00+03:00"));
         var user = await app.CreateUserAsync();
-        await user.Client.PostJsonAsync("/v1/nodes", Daily(Guid.NewGuid(), "20:00"), Key());
+        var id = Guid.NewGuid();
+        await user.Client.PostJsonAsync("/v1/nodes", Daily(id, "20:00"), Key());
 
         var feed = await (await user.Client.GetAsync("/v1/feed?from=2026-10-01&to=2026-12-31")).ReadJsonAsync();
 
-        Assert.Equal(["2026-10-17", "2026-10-18"],
-            feed.GetProperty("items").EnumerateArray().Select(i => i.GetProperty("occurrence").GetProperty("date").GetString()));
+        Assert.Equal("2026-10-17", Assert.Single(feed.GetProperty("items").EnumerateArray()).GetProperty("occurrence").GetProperty("date").GetString());
+        var key = feed.GetProperty("items")[0].GetProperty("occurrence").GetProperty("key").GetString();
+        var untie = await user.Client.SendJsonAsync(HttpMethod.Put, $"/v1/nodes/{id}/occurrences/{key}/untie", new { }, Key());
+        Assert.Equal(HttpStatusCode.OK, untie.StatusCode);
+        var updated = await (await user.Client.GetAsync("/v1/feed")).ReadJsonAsync();
+        var active = Assert.Single(updated.GetProperty("items").EnumerateArray(), i => i.GetProperty("occurrence").GetProperty("state").GetString() == "tied");
+        Assert.Equal("2026-10-18", active.GetProperty("occurrence").GetProperty("date").GetString());
+        var horizon = await (await user.Client.GetAsync("/v1/occurrences")).ReadJsonAsync();
+        Assert.True(horizon.GetProperty("occurrences").GetArrayLength() > 1);
     }
 
     [Fact]

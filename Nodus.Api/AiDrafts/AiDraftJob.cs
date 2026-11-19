@@ -1,3 +1,5 @@
+using Nodus.Api.Infrastructure.Llm;
+
 namespace Nodus.Api.AiDrafts;
 
 public enum AiDraftJobStatus
@@ -14,7 +16,7 @@ public enum AiDraftJobStatus
 }
 
 /// <summary>Durable job that turns dictated text into node drafts.</summary>
-public sealed class AiDraftJob
+public sealed class AiDraftJob : IAiJob
 {
     public Guid Id { get; set; }
     public Guid UserId { get; set; }

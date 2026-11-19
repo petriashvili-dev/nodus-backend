@@ -113,7 +113,7 @@ public class ExportImportTests(TestApp app) : IClassFixture<TestApp>
     }
 
     [Fact]
-    public async Task Unknown_nodus_version_is_rejected_without_ai()
+    public async Task Unknown_native_version_is_rejected_without_ai()
     {
         var user = await app.CreateUserAsync();
         var requests = app.Llm.Requests.Count;
@@ -138,7 +138,7 @@ public class ExportImportTests(TestApp app) : IClassFixture<TestApp>
               ] }
               """
             : """{"nodes":[]}""";
-        var user = await app.CreateUserAsync();
+        var user = await app.CreateAiUserAsync();
         const string csv = "Task,Due\nСдать отчёт,25.10.2026 10:00\nЙога,каждый вторник 19:00\n";
 
         var queued = await ImportAsync(user, csv, "todoist.csv", HttpStatusCode.Accepted);
@@ -164,7 +164,7 @@ public class ExportImportTests(TestApp app) : IClassFixture<TestApp>
         await using var scope = app.Services.CreateAsyncScope();
         var resolver = scope.ServiceProvider.GetRequiredService<ISelectionResolver<ImportFormat, IImportFormatParser>>();
 
-        Assert.IsType<Nodus.Api.DataPortability.Parsers.NodusV1Parser>(resolver.GetOrDefault(new ImportFormat("nodus", 1)));
+        Assert.IsType<Nodus.Api.DataPortability.Parsers.NativeV1Parser>(resolver.GetOrDefault(new ImportFormat("nodus", 1)));
         Assert.Null(resolver.GetOrDefault(new ImportFormat("nodus", 2)));
         Assert.Null(resolver.GetOrDefault(new ImportFormat("todoist", 1)));
     }

@@ -22,7 +22,7 @@ dotnet test                                 # unit + интеграционны�
 dotnet run -c Release --project Nodus.LoadTests -- http://localhost:5258 50 60
 ```
 
-Без ключа Resend письма не отправляются, а пишутся в лог; без ключа APNs push пропускаются; без LLM-провайдеров AI-задания завершаются `failed / ai_unavailable`.
+По умолчанию Email работает в Live: в Production SMTP обязателен; без SMTP host вне Production используется локальный логгер. Для подтверждения без почты задать `ServiceMode__Email=Mock` и секретный `EmailOtp__MockCode` из 6 цифр: [режимы сервисов](docs/15-service-modes.md). APNs по умолчанию выключены (`Apns__Enabled=false`); для включения нужны `true` и ключи Apple; без LLM-провайдеров AI-задания завершаются `failed / ai_unavailable`.
 
 ## Конфигурация и секреты
 
@@ -33,7 +33,8 @@ dotnet run -c Release --project Nodus.LoadTests -- http://localhost:5258 50 60
 | `ConnectionStrings__Postgres` | PostgreSQL (данные + Hangfire в схеме `hangfire`) |
 | `Jwt__SigningKey` | **секрет**, HMAC-ключ access JWT, ≥ 32 байт |
 | `EmailOtp__HashPepper` | **секрет**, pepper для хешей OTP, кодов приглашений и ключей AI-кеша |
-| `Resend__ApiKey`, `Resend__From` | отправка кодов подтверждения email |
+| `EmailOptions__Smtp__Host`, `EmailOptions__FromAddress` | отправка кодов подтверждения email |
+| `ServiceMode__Email`, `EmailOtp__MockCode` | серверный Live/Mock режим почты и секретный фиксированный код; не публикуются клиенту |
 | `Apns__KeyId`, `Apns__TeamId`, `Apns__BundleId`, `Apns__PrivateKey` | APNs по ключу `.p8` (содержимое файла; PEM, base64, `\n` в .env допустимы) |
 | `Llm__Providers__0__*` | primary neuroapi.host: `ApiKey`, `Model`, `SupportsJsonSchema`, цены за 1M токенов |
 | `Llm__Providers__1__*` | secondary Timeweb Cloud (`https://api.timeweb.ai`) |
@@ -41,21 +42,24 @@ dotnet run -c Release --project Nodus.LoadTests -- http://localhost:5258 50 60
 | `Observability__PrometheusEnabled` / `__OtlpEndpoint` | `/metrics` и/или экспорт OTLP |
 | `Hangfire__Enabled`, `Outbox__RunInBackground` | выключаются только в тестах |
 
-Остальные лимиты и сроки — в `appsettings.json` (`Occurrences`, `Retention`, `Ai`, `AiContinuations`, `RateLimits`, `Connections`, `Sse`).
+Здесь — основные. Полный список с описаниями и значениями по умолчанию — [docs/13-environment.md](docs/13-environment.md).
+
+Для production-установки на сервере Eatee с SMTP Live: [готовые значения и неизвестные параметры](docs/17-production-environment.md), шаблон для Dokploy — [`.env.example`](.env.example). Volume и база создаются автоматически; до запуска нужно выбрать узел PostgreSQL и поставить метку `nodus.data=true`.
 
 ## Эксплуатация
 
-- **Docker:** `docker compose up -d --build` (`docker-compose.yml`): `postgres` с volume `pgdata`, одноразовый `migrate`, затем `api`. TLS — на reverse proxy перед `api`; `/metrics` закрыть от внешнего мира.
-- **Миграции** под контролем релиза: шаг `docker run nodus-api migrate` (или сервис `migrate` в compose) перед запуском новой версии. API сам миграции не применяет (`Database__MigrateOnStartup=false`).
-- **Health:** `/health/live` (процесс жив), `/health/ready` (PostgreSQL доступен).
+- **Docker Swarm:** `docker-compose.yml` — production Stack v3.8 для Dokploy + Traefik. Готовый образ из GHCR, overlay-сети, отдельный мигратор, API ждёт актуальную схему. PostgreSQL закреплён на узле с `nodus.data=true` и использует выбранный постоянный volume. Настройка — [docs/16-swarm-stack.md](docs/16-swarm-stack.md). Локальный Compose: `docker compose -f docker-compose.local.yml up -d --build`.
+- **Миграции** под контролем релиза: отдельная задача `migrate`; API сам их не применяет (`Database__MigrateOnStartup=false`).
+- **Health:** `/health/live` (процесс жив), `/health/ready` (PostgreSQL доступен), `/version` (задеплоенный коммит).
+- **CI/CD:** `.github/workflows/deploy.yml` — при мердже в `main`: тесты на PostgreSQL, и только после них — образ в GHCR и деплой через Dokploy. См. [docs/09-operations.md](docs/09-operations.md#cicd-github-actions).
 - **Graceful shutdown:** 30 с на завершение SSE и воркеров Hangfire; SSE-клиенты переподключаются и догоняют через sync.
-- **Резервные копии:**
+- **Резервные копии:** через контейнер задачи `nodus_db` на узле БД (см. [инструкцию](docs/16-swarm-stack.md)).
   ```bash
-  docker compose exec -T postgres pg_dump -U nodus -Fc nodus > nodus-$(date +%F).dump
+  docker exec <DB_CONTAINER_ID> pg_dump -U nodus -Fc nodus > nodus-$(date +%F).dump
   # проверка восстановления — регулярно, в отдельную БД:
-  docker compose exec -T postgres createdb -U nodus nodus_restore_check
-  docker compose exec -T postgres pg_restore -U nodus -d nodus_restore_check < nodus-YYYY-MM-DD.dump
-  docker compose exec -T postgres psql -U nodus -d nodus_restore_check -c "select count(*) from users; select max(revision) from sync_changes;"
+  docker exec <DB_CONTAINER_ID> createdb -U nodus nodus_restore_check
+  docker exec <DB_CONTAINER_ID> pg_restore -U nodus -d nodus_restore_check < nodus-YYYY-MM-DD.dump
+  docker exec <DB_CONTAINER_ID> psql -U nodus -d nodus_restore_check -c "select count(*) from users; select max(revision) from sync_changes;"
   ```
 - **Логи** — JSON в stdout, с `RequestId` (заголовок `X-Request-Id`) и `IdempotencyKey`. Содержимое узлов, промпты и диктовка не логируются (`Llm__LogContent=false`).
 - **Метрики** (`Nodus.Api`): `nodus.llm.requests|latency|tokens|cost`, `nodus.outbox.events|lag`, `nodus.idempotency.replays`, `nodus.sync.requests`, `nodus.push.deliveries`, `nodus.continuations` + ASP.NET Core, HttpClient, runtime.
@@ -65,7 +69,7 @@ dotnet run -c Release --project Nodus.LoadTests -- http://localhost:5258 50 60
 
 ```
 Nodus.Api
-  Authentication/   анонимный аккаунт, JWT + ротация refresh, email OTP (Resend), профиль
+  Authentication/   анонимный аккаунт, JWT + ротация refresh, email OTP (SMTP), профиль
   Nodes/            узлы, ревизии шаблонов, права доступа (NodeAccess)
   Recurrence/       правило повторения, календарная арифметика, IANA/DST
   Occurrences/      ключи и состояния экземпляров, проекция истории, лента
@@ -76,10 +80,10 @@ Nodus.Api
   Notifications/    push-запросы и доставка
   AiDrafts/         голосовой разбор в черновики
   AiContinuations/  «Продолжение нити»
-  Infrastructure/   Persistence, Outbox, Hangfire, Llm, Sse, Apns, Resend, Observability
+  Infrastructure/   Persistence, Outbox, Hangfire, Llm, Sse, Apns, Email, Observability
 ```
 
-Каждая мутация: данные + записи `sync_changes` + события `outbox_events` + сохранённый ответ (`client_operations`) — в одной транзакции. Dispatcher outbox рассылает SSE-сигналы и ставит задания Hangfire (очереди `ai-drafts`, `ai-continuations`, `notifications`, `maintenance`). Провайдеры LLM, APNs и Resend скрыты за интерфейсами; worker и SSE-fanout можно вынести, заменив `IBackgroundJobs`/`IRealtimeHub`.
+Каждая мутация: данные + записи `sync_changes` + события `outbox_events` + сохранённый ответ (`client_operations`) — в одной транзакции. Dispatcher outbox рассылает SSE-сигналы и ставит задания Hangfire (очереди `ai-drafts`, `ai-continuations`, `notifications`, `maintenance`). Провайдеры LLM, APNs и SMTP скрыты за интерфейсами; worker и SSE-fanout можно вынести, заменив `IBackgroundJobs`/`IRealtimeHub`.
 
 ## Принятые решения (открытые вопросы §13)
 
@@ -97,6 +101,9 @@ Nodus.Api
 | Прошедший невыполненный экземпляр | Сервер отдаёт `is_past` + `state`; показывать ли просрочку — решает клиент. |
 | Сроки хранения | idempotency 30 дн., sync-журнал 90 дн. (старше → `410` и snapshot), outbox 7 дн., AI-текст 24 ч, черновики 14 дн., кеш продолжений 180 дн. без использования. |
 | Смена часового пояса | `PUT /v1/me/timezone`: свои узлы переходят в новый пояс с тем же местным временем (серии — новой ревизией), прошедшие одноразовые и совместные узлы не трогаются. |
+| Доступ к AI-функциям | План `Standard`/`Plus` в `users` + функции плана в конфигурации `Plans`; клиенту — только `features`. Nodus+ выдаётся командой `plan`, без HTTP. AI требует серверного согласия (`PUT /me/ai-consent`). [ADR 0001](docs/adr/0001-user-plans-and-features.md). |
+| Вход ревьюера Apple | Для адресов `EmailOtp:ReviewEmails` код = секрет `EmailOtp:ReviewCode`, письмо не отправляется, лимиты те же; включается только на время ревью. |
+| Конфигурация клиента | Таблица `app_config` (ключ → JSON), публичный `GET /v1/app-config` с ETag, правка командой `config` без перезапуска; серверные лимиты отдаются там же только для чтения. |
 | Слияние аккаунтов | Не выполняется. Email, занятый другим аккаунтом, → `409 email_already_linked`; вход по email на новом устройстве — `/v1/auth/email/sign-in/*`. |
 
 ## API (`/v1`, JSON snake_case, ошибки — problem details с полем `code`)
@@ -105,7 +112,7 @@ Nodus.Api
 
 | | |
 |---|---|
-| Auth | `POST /auth/anonymous`, `/auth/refresh`, `/auth/logout`, `/auth/email/start`, `/auth/email/verify`, `/auth/email/sign-in/start`, `/auth/email/sign-in/verify`; `GET/PATCH/DELETE /me`, `PUT /me/timezone` |
+| Auth | `POST /auth/anonymous`, `/auth/refresh`, `/auth/logout`, `/auth/email/start`, `/auth/email/verify`, `/auth/email/sign-in/start`, `/auth/email/sign-in/verify`; `GET/PATCH/DELETE /me`, `PUT /me/timezone`, `PUT /me/ai-consent` |
 | Nodes | `POST /nodes`, `POST /nodes/batch`, `GET/PATCH/DELETE /nodes/{id}`, `PUT /nodes/{id}/occurrences/{key}/untie|retie`, `GET /nodes/{id}/occurrences?from&to` |
 | Лента | `GET /feed?from&to`, `GET /occurrences?from&to` (горизонт локальных уведомлений) |
 | Sync | `GET /sync?cursor&limit`, `GET /sync/snapshot`, `GET /events` (SSE `sync.required`, `Last-Event-ID`) |
@@ -114,4 +121,5 @@ Nodus.Api
 | Sharing | `POST /nodes/{id}/members`, `DELETE /nodes/{id}/members/{userId}` |
 | AI drafts | `POST /ai/node-drafts`, `GET /ai/node-drafts`, `GET /ai/node-drafts/{jobId}`, `POST /ai/node-drafts/{jobId}/confirm` (с `nodes` — атомарно), `POST /ai/node-drafts/{jobId}/cancel` |
 | Продолжения | `POST /suggestions/{id}/shown`, `/accept` (создаёт узел атомарно), `/dismiss` |
+| App config | `GET /app-config` (без авторизации, ETag / `304`) |
 | Экспорт / импорт | `GET /me/export`, `POST /me/import`, `GET /me/imports/{id}`, `POST /me/imports/{id}/confirm`, `POST /me/imports/{id}/cancel` |

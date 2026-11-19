@@ -46,7 +46,7 @@ public sealed record AiDraftJobDto(
 public sealed record AiDraftRequestedPayload(Guid JobId);
 
 public sealed class AiDraftService(
-    NodusDbContext db,
+    DatabaseContext db,
     UnitOfWork unitOfWork,
     NodeService nodes,
     IOptions<AiOptions> options,
@@ -81,7 +81,7 @@ public sealed class AiDraftService(
         };
         db.AiDraftJobs.Add(job);
         db.OutboxEvents.Add(OutboxEvent.Create(OutboxEventTypes.AiDraftRequested,
-            JsonSerializer.Serialize(new AiDraftRequestedPayload(job.Id), NodusJson.Options), now));
+            JsonSerializer.Serialize(new AiDraftRequestedPayload(job.Id), ApiJson.Options), now));
         Record(job);
 
         await unitOfWork.CommitAsync(ct);
@@ -160,7 +160,7 @@ public sealed class AiDraftService(
         var drafts = (await db.AiNodeDrafts.AsNoTracking().Where(d => ids.Contains(d.JobId)).ToListAsync(ct))
             .ToLookup(d => d.JobId);
         return jobs.Select(j => Dto(j, drafts[j.Id].OrderBy(d => d.Index)
-            .Select(d => JsonSerializer.Deserialize<NodeDraftDto>(d.Payload, NodusJson.Options)!).ToList())).ToList();
+            .Select(d => JsonSerializer.Deserialize<NodeDraftDto>(d.Payload, ApiJson.Options)!).ToList())).ToList();
     }
 
     private static AiDraftJobDto Dto(AiDraftJob job, IReadOnlyList<NodeDraftDto> drafts) =>

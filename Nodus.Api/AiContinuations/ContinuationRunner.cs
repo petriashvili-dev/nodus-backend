@@ -11,6 +11,7 @@ using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Infrastructure.Persistence;
 using Nodus.Api.Nodes;
 using Nodus.Api.Occurrences;
+using Nodus.Api.Plans;
 using Nodus.Api.Sync;
 
 namespace Nodus.Api.AiContinuations;
@@ -21,7 +22,7 @@ public sealed class ContinuationRequestedOutboxHandler(IBackgroundJobs jobs, IOp
 
     public Task HandleAsync(OutboxEvent outboxEvent, CancellationToken ct)
     {
-        var payload = JsonSerializer.Deserialize<ContinuationRequestedPayload>(outboxEvent.Payload, NodusJson.Options)!;
+        var payload = JsonSerializer.Deserialize<ContinuationRequestedPayload>(outboxEvent.Payload, ApiJson.Options)!;
         return jobs.ScheduleAsync<ContinuationRunner>(r => r.RunAsync(payload.NodeId, payload.ContentHash, CancellationToken.None),
             TimeSpan.FromSeconds(options.Value.DebounceSeconds));
     }
@@ -33,11 +34,12 @@ public sealed class ContinuationRequestedOutboxHandler(IBackgroundJobs jobs, IOp
 /// is dropped instead of shown.
 /// </summary>
 public sealed class ContinuationRunner(
-    NodusDbContext db,
+    DatabaseContext db,
     UnitOfWork unitOfWork,
     ILlmClient llm,
     IOptions<ContinuationOptions> options,
     IOptions<EmailOtpOptions> secrets,
+    FeatureAccess features,
     TimeProvider time,
     ILogger<ContinuationRunner> logger)
 {
@@ -49,6 +51,8 @@ public sealed class ContinuationRunner(
     {
         var node = await db.Nodes.AsNoTracking().SingleOrDefaultAsync(n => n.Id == nodeId, ct);
         if (node is null || !await StillCurrentAsync(node, contentHash, ct)) return;
+        // The plan or the consent may have gone during the debounce delay.
+        if (await features.CheckAsync(node.OwnerId, Features.AiContinuations, ct) != FeatureCheck.Allowed) return;
 
         var suggestion = await db.NodeSuggestions.SingleOrDefaultAsync(s => s.SourceNodeId == nodeId, ct);
         if (suggestion is { Status: SuggestionStatus.Accepted }) return;
@@ -78,7 +82,7 @@ public sealed class ContinuationRunner(
         suggestion.ShownAt = suggestion.DismissedAt = suggestion.AcceptedAt = null;
         suggestion.LinkedNodeId = null;
         if (calledLlm) suggestion.LlmCalledAt = now;
-        NodusMetrics.Continuation(title is null ? $"skipped_{origin}".ToLowerInvariant() : $"ready_{origin}".ToLowerInvariant());
+        ApiMetrics.Continuation(title is null ? $"skipped_{origin}".ToLowerInvariant() : $"ready_{origin}".ToLowerInvariant());
         suggestion.UpdatedAt = now;
         suggestion.Version++;
         // Skips are invisible to clients; journal only what they can see or must stop seeing.

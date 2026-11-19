@@ -63,6 +63,8 @@ PATCH /v1/nodes/{id}
 
 ## Delta Sync
 
+Код: `Sync/SyncEndpoints.cs` + провайдеры сущностей. Страница журнала группируется по типу сущности, и для каждого типа вызывается свой `ISyncEntityProvider` (паттерн «стратегия», выбор через `ISelectionResolver` по `entity_type`). Провайдер одним запросом загружает все сущности страницы, проверяет доступ получателя и для каждой решает: `upsert` с данными, tombstone или «ничего не отправлять» (например, состояние экземпляра недоступного узла — его покрывает tombstone узла). Провайдеры лежат в своих модулях (`Nodes/NodeSyncProviders.cs`, `Connections/ConnectionSyncProvider.cs`…); новая синхронизируемая сущность добавляет провайдер и не трогает `SyncEndpoints`.
+
 ```http
 GET /v1/sync?cursor=42&limit=200
 ```

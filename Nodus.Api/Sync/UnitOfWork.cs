@@ -4,7 +4,7 @@ using Nodus.Api.Infrastructure.Persistence;
 namespace Nodus.Api.Sync;
 
 /// <summary>Saves entity changes, their sync feed entries and outbox events in one transaction.</summary>
-public sealed class UnitOfWork(NodusDbContext db, ChangeJournal journal, OutboxSignal signal)
+public sealed class UnitOfWork(DatabaseContext db, ChangeJournal journal, OutboxSignal signal)
 {
     private bool _signalPending;
 

@@ -2,44 +2,9 @@
 
 ## Конфигурация
 
-Значения по умолчанию — в `Nodus.Api/appsettings.json`. Переопределение — через environment: `Секция__Ключ`, элементы списков по индексу (`Llm__Providers__0__ApiKey`).
+Значения по умолчанию — в `Nodus.Api/appsettings.json`. Переопределение — через environment: `Секция__Ключ`, элементы списков по индексу (`Llm__Providers__0__ApiKey`). Обязательные настройки — `ConnectionStrings__Postgres`, `Jwt__SigningKey`, `EmailOtp__HashPepper`, в Production Live также `EmailOptions__Smtp__Host`; без них приложение не стартует. SMTP — [14-smtp.md](14-smtp.md). Для работы без почты включить Email=Mock с секретным MockCode: [15-service-modes.md](15-service-modes.md).
 
-### Обязательные секреты
-
-| Переменная | Что это |
-|---|---|
-| `ConnectionStrings__Postgres` | строка подключения PostgreSQL |
-| `Jwt__SigningKey` | ключ подписи access-токенов, ≥ 32 байт (`openssl rand -base64 48`) |
-| `EmailOtp__HashPepper` | секрет для хешей кодов (email, приглашения) и ключей AI-кеша, ≥ 16 символов. **Не менять** на работающей системе: выданные коды и кеш станут недействительными |
-
-Без них приложение не запустится (проверка при старте).
-
-### Интеграции (необязательные)
-
-| Переменные | Без них |
-|---|---|
-| `Resend__ApiKey`, `Resend__From` | письма пишутся в лог вместо отправки |
-| `Apns__KeyId`, `Apns__TeamId`, `Apns__BundleId`, `Apns__PrivateKey` (содержимое `.p8`) | push пропускаются |
-| `Llm__Providers__0__ApiKey`, `__Model` (neuroapi), `Llm__Providers__1__ApiKey`, `__Model` (Timeweb) | AI-задания завершаются `ai_unavailable`, продолжения — только по шаблонам |
-
-### Основные параметры
-
-| Секция | Ключевые параметры |
-|---|---|
-| `Jwt` | `AccessTokenMinutes` 15, `RefreshTokenDays` 60, `RotationGraceSeconds` 120 |
-| `EmailOtp` | `CodeExpiryMinutes` 10, `ResendCooldownSeconds` 60, `MaxCodesPerHour` 5, `MaxAttempts` 5 |
-| `RateLimits` | `AuthPerMinute` 20, `OtpPerMinute` 10, `AiPerMinute` 10 |
-| `Occurrences` | `HorizonDays` 45, `MaxCompletionBackdateDays` 30 |
-| `Connections` | `InviteLifetimeHours` 24, `MaxPendingInvites` 10, `InviteLinkBase` |
-| `Ai` | `MaxTextLength` 4000, `MaxJobsPerDay` 50, `MaxAttempts` 3, `DraftRetentionDays` 14, `InputRetentionHours` 24 |
-| `AiContinuations` | `Enabled`, `DebounceSeconds` 20, `MaxLlmCallsPerUserPerDay` 30 |
-| `Import` | `MaxContentChars` 200 000, `MaxAiInputChars` 30 000, `MaxNodes` 1000, `MaxAiImportsPerDay` 5, `MaxAttempts` 3, `PreviewRetentionDays` 7 |
-| `Llm` | `TotalTimeoutSeconds` 150, `CircuitFailureThreshold` 5, `CircuitBreakSeconds` 60, `LogContent` false, `Providers[]` |
-| `Outbox` | `PollSeconds` 5, `BatchSize` 100, `MaxAttempts` 10 |
-| `Sse` | `HeartbeatSeconds` 20, `RetryMilliseconds` 3000 |
-| `Retention` | см. ниже |
-| `Observability` | `PrometheusEnabled`, `OtlpEndpoint`, `JsonLogs` |
-| `ReverseProxy` | `TrustForwardedHeaders` — включить за reverse proxy |
+**Все переменные с описаниями и значениями по умолчанию — [13-environment.md](13-environment.md).**
 
 ## Запуск локально
 
@@ -63,19 +28,88 @@ docker run --env-file .env nodus-api migrate   # в контейнере
 
 Новая миграция: `cd Nodus.Api && dotnet ef migrations add <Name> -o Infrastructure/Persistence/Migrations`.
 
-## Docker
-
-- `Nodus.Api/Dockerfile` — multi-stage, процесс не от root, `tzdata`, healthcheck на `/health/live`, порт 8080.
-- `docker-compose.yml` — `postgres` (volume `pgdata`) → одноразовый `migrate` → `api` (наружу только `127.0.0.1:8080`, перед ним reverse proxy с TLS). Секреты — в `.env` рядом (в git не попадает).
+## Выдача плана Nodus+
 
 ```bash
-docker compose up -d --build
+dotnet run --project Nodus.Api -- plan set --email user@example.com --plan plus [--expires 2027-01-01T00:00:00Z]
+dotnet run --project Nodus.Api -- plan set --user-id <uuid> --plan standard
+dotnet run --project Nodus.Api -- plan list
+docker exec <API_CONTAINER_ID> dotnet Nodus.Api.dll plan set --email user@example.com --plan plus   # задача Swarm api
 ```
+
+Подробности и коды выхода — [11-plans-and-features.md](11-plans-and-features.md#выдача-плана).
+
+## Конфигурация клиента
+
+```bash
+dotnet run --project Nodus.Api -- config set links.privacy_policy https://nodus.app/privacy
+dotnet run --project Nodus.Api -- config set features.import_enabled false --json
+dotnet run --project Nodus.Api -- config list
+docker exec <API_CONTAINER_ID> dotnet Nodus.Api.dll config set min_supported_version 1.2.0   # задача Swarm api
+```
+
+Клиенты увидят изменение в течение `AppConfig:CacheSeconds`. Подробности — [12-app-config.md](12-app-config.md).
+
+До первого развёртывания все миграции схлопнуты в одну `InitialCreate`; дальше — только новые миграции поверх, уже выпущенные не редактируются. CI проверяет, что модель и миграции совпадают (`dotnet ef migrations has-pending-model-changes`).
+
+## CI/CD (GitHub Actions)
+
+`.github/workflows/deploy.yml`, по схеме eatee-backend. Запускается только при мердже в `main`; пуши в `dev` CI не запускают — тесты там гоняются локально перед коммитом. Деплои идут по одному (новый мердж ждёт текущий, не отменяет его).
+
+| Задача | Когда | Что делает |
+|---|---|---|
+| `test` | мердж (push) в `main` | restore, build Release, проверка миграций, `dotnet test` на PostgreSQL 16 (сервис в job, `NODUS_TEST_POSTGRES`), отчёт `.trx` в артефактах |
+| `deploy` | тот же запуск, **только после зелёного `test`** | сборка образа (`GIT_SHA`, `BUILD_TIME`), push в GHCR с тегами `latest` и SHA коммита, вызов Dokploy `compose.deploy` |
+
+Секреты репозитория: `DOKPLOY_URL` (например, `https://deploy.example.ru`), `DOKPLOY_API_TOKEN`, `DOKPLOY_COMPOSE_ID`. `GITHUB_TOKEN` выдаётся автоматически (права `packages: write`).
+
+Откат — передеплой предыдущего тега `ghcr.io/petriashvili-dev/nodus-backend:<sha>`.
+
+## Docker Swarm Stack
+
+- `Nodus.Api/Dockerfile` — multi-stage, non-root, команда по умолчанию `serve`: ждёт актуальной схемы БД и запускает API. `migrate` ждёт БД и применяет миграции отдельной задачей.
+- `docker-compose.yml` — production **Stack v3.8**, готовый образ GHCR; в Dokploy выбрать Compose Type = Stack.
+- `docker-compose.local.yml` — обычный локальный Compose со сборкой, API на `127.0.0.1:8080`.
+- Запуск, переменные, узел/volume PostgreSQL, Traefik, обновление и команды — [16-swarm-stack.md](16-swarm-stack.md).
+
+### Схема развёртывания
+
+```mermaid
+flowchart LR
+    GH["CI: тесты → образ"] --> GHCR[("GHCR · SHA / latest")]
+    GH --> DOK["Dokploy · Stack"]
+    DOK --> SW["docker stack deploy"]
+    SW --> DB[("db · PostgreSQL 16<br/>узел nodus.data=true · постоянный volume")]
+    SW --> MIG["migrate · отдельная задача"]
+    SW --> API["api · serve"]
+    DB -- "соединение" --> MIG
+    MIG -- "схема EF" --> API
+    DB -- "ожидание БД и схемы" --> API
+    GHCR --> MIG & API
+    TR["Traefik · overlay edge"] --> API
+```
+
+Swarm не упорядочивает сервисы через depends_on: мигратор ждёт БД, новый API ждёт отсутствия pending migrations своего образа. У мигратора отключён HTTP healthcheck. Порты на хост не публикуются; наружу API доступен через Traefik на 8080, metrics — только внутри сети на 9464. PostgreSQL — только во внутренней overlay-сети.
+
+API работает в одной реплике, update/rollback — stop-first; есть короткий перерыв при обновлении. Миграции должны быть обратно совместимыми, поскольку старый API может ещё работать во время обновления схемы. Откат образа не откатывает БД.
+
+```bash
+# На manager, с заранее загруженными Environment-переменными:
+docker stack config --compose-file docker-compose.yml > /dev/null
+docker stack deploy --with-registry-auth --compose-file docker-compose.yml nodus
+docker service logs nodus_migrate
+docker service logs nodus_api
+# Локальная разработка:
+docker compose -f docker-compose.local.yml up -d --build
+```
+
+API и мигратор получают Environment Dokploy через `env_file: .env`; короткий `environment` задаёт вычисляемые и инфраструктурные параметры. В текущем Stack подстановок нет; при ручном CLI-запуске достаточно `.env` рядом с файлом. Для первой установки выбрать и пометить узел БД; volume, база и таблицы создаются автоматически. Все значения и TODO — [17-production-environment.md](17-production-environment.md). При переносе существующей БД отдельно выбрать её volume или восстановить backup. API подключён к существующим eatee-proxy и eatee-mail; размещение — на сервере Eatee.
 
 ## Health и остановка
 
 - `GET /health/live` — процесс жив.
 - `GET /health/ready` — есть связь с PostgreSQL.
+- `GET /version` — `{ version, commit, build_time }`: какой коммит задеплоен (из build-args образа).
 - На SIGTERM у SSE и воркеров Hangfire есть 30 с на завершение (`stop_grace_period` 40 с в compose). Клиенты SSE переподключаются и догоняют через sync.
 
 ## Хранение данных (retention)
@@ -100,16 +134,18 @@ docker compose up -d --build
 
 ## Резервные копии
 
+Контейнер задачи БД найти на её узле: `docker ps --filter label=com.docker.swarm.service.name=nodus_db`. Если Stack называется иначе, заменить префикс nodus_. Пользователя и базу подставить из POSTGRES_USER/POSTGRES_DB.
+
 ```bash
-docker compose exec -T postgres pg_dump -U nodus -Fc nodus > nodus-$(date +%F).dump
+docker exec <DB_CONTAINER_ID> pg_dump -U nodus -Fc nodus > nodus-$(date +%F).dump
 ```
 
 Проверка восстановления — регулярно, в отдельную БД:
 
 ```bash
-docker compose exec -T postgres createdb -U nodus nodus_restore_check
-docker compose exec -T postgres pg_restore -U nodus -d nodus_restore_check < nodus-YYYY-MM-DD.dump
-docker compose exec -T postgres psql -U nodus -d nodus_restore_check -c "select count(*) from users; select max(revision) from sync_changes;"
+docker exec <DB_CONTAINER_ID> createdb -U nodus nodus_restore_check
+docker exec <DB_CONTAINER_ID> pg_restore -U nodus -d nodus_restore_check < nodus-YYYY-MM-DD.dump
+docker exec <DB_CONTAINER_ID> psql -U nodus -d nodus_restore_check -c "select count(*) from users; select max(revision) from sync_changes;"
 ```
 
 ## Логи
@@ -132,6 +168,8 @@ OpenTelemetry: `Observability:PrometheusEnabled=true` открывает `/metri
 | `nodus.sync.requests` | `kind` (delta/snapshot) |
 | `nodus.push.deliveries` | `outcome` |
 | `nodus.continuations` | `outcome` (ready/skipped × template/cache/llm) |
+| `nodus.ai.jobs` | `kind` (drafts/import), `outcome` (ready, retry, discarded или код ошибки) |
+| `nodus.feature.denied` | `feature`, `reason` (not_in_plan/consent_required) |
 
 Плюс стандартные метрики ASP.NET Core, HttpClient и runtime.
 
@@ -154,6 +192,12 @@ dotnet test        # нужен PostgreSQL на 55432 или NODUS_TEST_POSTGRES
 | `Integration/SharingTests` | приглашения, встречные приглашения, права участников, отзыв доступа |
 | `Integration/AiDraftTests`, `Ai/*` | AI-задания, fallback LLM, разбор ответа, подтверждение |
 | `Integration/ContinuationTests` | конвейер, кеш, устаревание, принятие |
+| `Integration/PlanTests`, `Plans/*` | доступ по плану и согласию, истечение плана, отказ без сохранения ключа, неявный запуск продолжений, сохранение начатых заданий, sync профиля, команда `plan` |
+| `Notifications/EmailLoggingTests` | коды из писем не попадают в логи вне Development, Production Live без SMTP host не стартует |
+| `Notifications/SmtpEmailSenderTests`, `Integration/SmtpAuthenticationTests` | настоящий MailKit и локальный TCP SMTP: MIME, envelope, ошибки, таймаут, отмена, настройка транспорта и привязка email через API |
+| `Notifications/ServiceModeOptionsTests`, `Integration/MockEmailTests`, `LiveEmailModeTests` | Production Mock без SMTP, секретный фиксированный код, срок/лимиты/одноразовость, изоляция аккаунтов, сохранность Live и отсутствие режима в публичной конфигурации |
+| `Integration/AppConfigTests` | публичный конфиг, лимиты, типы значений, изменения без перезапуска, ETag/`304`, команда `config` и проверка ввода |
+| `Integration/ReviewAccountTests` | фиксированный код для демо-аккаунта App Review без письма, лимит попыток, валидация настроек |
 | `Integration/ExportImportTests` | только активные узлы в экспорте, round trip без дублей, дефолты, версии, AI-импорт с предпросмотром |
 | `Integration/FailureAndSecurityTests` | повторная доставка outbox, поддельные JWT, перебор id, лимиты тела |
 

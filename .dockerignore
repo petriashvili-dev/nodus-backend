@@ -1,5 +1,8 @@
-**/bin
+# Include historical Windows-style output names such as bin\Release.
+**/bin*
 **/obj
+**/.env
+**/.env.*
 **/.idea
 **/.DS_Store
 **/appsettings.Development.json

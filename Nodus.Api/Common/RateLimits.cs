@@ -24,7 +24,7 @@ public static class RateLimits
     /// <summary>AI requests, partitioned by user.</summary>
     public const string Ai = "ai";
 
-    public static IServiceCollection AddNodusRateLimiting(this IServiceCollection services, IConfiguration configuration)
+    public static IServiceCollection AddRateLimitingServices(this IServiceCollection services, IConfiguration configuration)
     {
         var limits = configuration.GetSection(RateLimitOptions.Section).Get<RateLimitOptions>() ?? new RateLimitOptions();
         return services.AddRateLimiter(o =>

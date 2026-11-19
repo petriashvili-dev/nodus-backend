@@ -39,7 +39,7 @@ public static partial class DeviceEndpoints
     /// A token can belong to one installation only: when the app signs in to another account on the same phone,
     /// the token moves and the previous account stops receiving pushes there.
     /// </summary>
-    private static async Task<ApiResult> RegisterAsync(RegisterDeviceRequest request, HttpContext http, NodusDbContext db,
+    private static async Task<ApiResult> RegisterAsync(RegisterDeviceRequest request, HttpContext http, DatabaseContext db,
         TimeProvider time, CancellationToken ct)
     {
         var token = request.ApnsToken?.Trim().ToLowerInvariant();
@@ -84,7 +84,7 @@ public static partial class DeviceEndpoints
     }
 
     /// <summary>Called on logout so the installation stops receiving this account's pushes.</summary>
-    private static async Task<ApiResult> UnregisterAsync(string installationId, HttpContext http, NodusDbContext db,
+    private static async Task<ApiResult> UnregisterAsync(string installationId, HttpContext http, DatabaseContext db,
         CancellationToken ct)
     {
         var userId = http.User.GetUserId();

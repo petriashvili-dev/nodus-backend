@@ -27,7 +27,7 @@ public sealed class RetentionOptions
 
 /// <summary>Daily retention cleanup. Correctness never depends on it running on time.</summary>
 public sealed class MaintenanceJob(
-    NodusDbContext db,
+    DatabaseContext db,
     UnitOfWork unitOfWork,
     AiDraftService aiDrafts,
     ImportService imports,

@@ -1,3 +1,5 @@
+using Nodus.Api.Plans;
+
 namespace Nodus.Api.Authentication;
 
 public sealed class User
@@ -17,6 +19,17 @@ public sealed class User
 
     /// <summary>Name shown to trusted connections and co-members of shared nodes.</summary>
     public string? DisplayName { get; set; }
+
+    /// <summary>Stored plan; it is in effect only until <see cref="PlanExpiresAt"/> (see <c>FeatureAccess</c>).</summary>
+    public UserPlan Plan { get; set; }
+
+    public PlanSource? PlanSource { get; set; }
+
+    /// <summary><c>null</c> — the plan does not expire.</summary>
+    public DateTimeOffset? PlanExpiresAt { get; set; }
+
+    /// <summary>When the user agreed to send their content to AI providers; <c>null</c> — not agreed or withdrawn.</summary>
+    public DateTimeOffset? AiConsentAt { get; set; }
 
     /// <summary>Last sync revision allocated to this user as a change recipient (see <c>SyncChange</c>).</summary>
     public long SyncRevision { get; set; }

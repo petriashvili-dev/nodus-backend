@@ -51,7 +51,7 @@ public class RealtimeAndPushTests(TestApp app) : IClassFixture<TestApp>
         {
             scope.ServiceProvider.GetRequiredService<PushNotifier>().Request(new PushRequest(user.Id, "evt-1",
                 PushKinds.AiDraftsReady, "Черновики готовы", "Откройте Nodus", new Dictionary<string, string> { ["job_id"] = "1" }));
-            await scope.ServiceProvider.GetRequiredService<NodusDbContext>().SaveChangesAsync();
+            await scope.ServiceProvider.GetRequiredService<DatabaseContext>().SaveChangesAsync();
         }
 
         await app.Services.GetRequiredService<OutboxDispatcher>().DispatchBatchAsync(CancellationToken.None);

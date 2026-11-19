@@ -34,7 +34,7 @@ public class AiDraftTests(TestApp app) : IClassFixture<TestApp>
     public async Task Job_becomes_ready_with_drafts_and_creates_nothing_until_confirmed()
     {
         app.Llm.Respond = _ => TwoNodes;
-        var user = await app.CreateUserAsync();
+        var user = await app.CreateAiUserAsync();
         await user.Client.PostJsonAsync("/v1/devices", new { installation_id = "p", apns_token = new string('a', 64) });
 
         var jobId = await CreateJobAsync(user);
@@ -55,7 +55,7 @@ public class AiDraftTests(TestApp app) : IClassFixture<TestApp>
     public async Task Confirm_with_nodes_is_atomic_and_idempotent()
     {
         app.Llm.Respond = _ => TwoNodes;
-        var user = await app.CreateUserAsync();
+        var user = await app.CreateAiUserAsync();
         var jobId = await CreateJobAsync(user);
         await ProcessOutboxAsync();
         var nodes = new[]
@@ -78,7 +78,7 @@ public class AiDraftTests(TestApp app) : IClassFixture<TestApp>
     public async Task Invalid_confirmation_leaves_the_job_ready()
     {
         app.Llm.Respond = _ => TwoNodes;
-        var user = await app.CreateUserAsync();
+        var user = await app.CreateAiUserAsync();
         var jobId = await CreateJobAsync(user);
         await ProcessOutboxAsync();
 
@@ -94,7 +94,7 @@ public class AiDraftTests(TestApp app) : IClassFixture<TestApp>
     public async Task Persistent_invalid_output_fails_after_max_attempts_and_cancelled_jobs_are_not_processed()
     {
         app.Llm.Respond = _ => "definitely not json";
-        var user = await app.CreateUserAsync();
+        var user = await app.CreateAiUserAsync();
         var failing = await CreateJobAsync(user);
         for (var i = 0; i < 3; i++)
         {
@@ -117,12 +117,12 @@ public class AiDraftTests(TestApp app) : IClassFixture<TestApp>
     public async Task Ready_job_reaches_the_client_through_sync()
     {
         app.Llm.Respond = _ => TwoNodes;
-        var user = await app.CreateUserAsync();
+        var user = await app.CreateAiUserAsync();
         var jobId = await CreateJobAsync(user);
         await ProcessOutboxAsync();
 
         var sync = await (await user.Client.GetAsync("/v1/sync?cursor=0")).ReadJsonAsync();
-        var change = Assert.Single(sync.GetProperty("changes").EnumerateArray());
+        var change = Assert.Single(sync.GetProperty("changes").EnumerateArray(), c => c.GetProperty("entity_type").GetString() != "user");
 
         Assert.Equal(("ai_draft_job", jobId.ToString()), (change.GetProperty("entity_type").GetString(), change.GetProperty("entity_id").GetString()));
         Assert.Equal(2, change.GetProperty("data").GetProperty("drafts").GetArrayLength());
@@ -131,7 +131,7 @@ public class AiDraftTests(TestApp app) : IClassFixture<TestApp>
     [Fact]
     public async Task Requests_are_validated_and_the_text_is_not_returned()
     {
-        var user = await app.CreateUserAsync();
+        var user = await app.CreateAiUserAsync();
 
         var invalid = await user.Client.PostJsonAsync("/v1/ai/node-drafts",
             new { text = "", timezone = "Nowhere/City", reference_time = app.Time.GetUtcNow().AddDays(-5) }, Key());
@@ -148,7 +148,7 @@ public class AiDraftTests(TestApp app) : IClassFixture<TestApp>
     public async Task Unavailable_llm_fails_the_job_without_retries()
     {
         app.Llm.Respond = _ => throw new LlmException(LlmErrorCategory.NotConfigured, "none", "No provider.");
-        var user = await app.CreateUserAsync();
+        var user = await app.CreateAiUserAsync();
         var jobId = await CreateJobAsync(user);
 
         await ProcessOutboxAsync();

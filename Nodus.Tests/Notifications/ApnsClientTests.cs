@@ -19,6 +19,7 @@ public class ApnsClientTests
 
     private ApnsOptions Options(string? privateKey = null) => new()
     {
+        Enabled = true,
         KeyId = "ABC123DEFG", TeamId = "TEAM123456", BundleId = "app.nodus",
         PrivateKey = privateKey ?? _key.ExportPkcs8PrivateKeyPem()
     };
@@ -115,7 +116,7 @@ public class ApnsClientTests
     public async Task Missing_configuration_fails_without_calling_apple()
     {
         var handler = new StubHandler(_ => (HttpStatusCode.OK, ""));
-        var options = Microsoft.Extensions.Options.Options.Create(new ApnsOptions());
+        var options = Microsoft.Extensions.Options.Options.Create(new ApnsOptions { Enabled = true });
         var client = new ApnsClient(new HttpClient(handler), new ApnsTokenProvider(options, _time), options, _time,
             NullLogger<ApnsClient>.Instance);
 

@@ -1,53 +1,129 @@
-# Single-instance MVP: one API container (HTTP API, SSE, outbox dispatcher, Hangfire server) and PostgreSQL.
-# TLS terminates on a reverse proxy in front of `api`. Secrets come from .env (never committed).
+# Production Docker Swarm Stack (Dokploy: Compose Type = Stack).
+# Eatee production server. Fixed image/domain/networks; Dokploy writes Environment to .env.
+version: "3.8"
+
 services:
-  postgres:
+  api:
+    image: ghcr.io/petriashvili-dev/nodus-backend:latest
+    env_file:
+      - .env
+    environment: &api-env
+      ASPNETCORE_ENVIRONMENT: Production
+      ASPNETCORE_URLS: http://+:8080;http://+:9464
+      Database__MigrateOnStartup: "false"
+      Observability__MetricsPort: "9464"
+      Logging__LogLevel__Microsoft.AspNetCore: Warning
+      Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command: Warning
+    stop_grace_period: 40s
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/ready"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5m
+    networks:
+      - edge
+      - mail
+      - default
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+        monitor: 5m
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+        monitor: 5m
+      labels:
+        - traefik.enable=true
+        - traefik.swarm.network=eatee-proxy
+        - traefik.docker.network=eatee-proxy
+        - traefik.http.routers.nodus-web.rule=Host(`nodus.eatee.ru`)
+        - traefik.http.routers.nodus-web.entrypoints=web
+        - traefik.http.routers.nodus-web.middlewares=nodus-redirect
+        - traefik.http.routers.nodus-web.service=nodus
+        - traefik.http.middlewares.nodus-redirect.redirectscheme.scheme=https
+        - traefik.http.middlewares.nodus-redirect.redirectscheme.permanent=true
+        - traefik.http.routers.nodus-secure.rule=Host(`nodus.eatee.ru`)
+        - traefik.http.routers.nodus-secure.entrypoints=websecure
+        - traefik.http.routers.nodus-secure.tls=true
+        - traefik.http.routers.nodus-secure.tls.certresolver=regru
+        - traefik.http.routers.nodus-secure.service=nodus
+        - traefik.http.services.nodus.loadbalancer.server.port=8080
+
+  # A completed task (0/1 running) is normal. It runs again when the image/spec changes.
+  migrate:
+    image: ghcr.io/petriashvili-dev/nodus-backend:latest
+    command: ["migrate"]
+    env_file:
+      - .env
+    environment: *api-env
+    healthcheck:
+      disable: true
+    networks:
+      - default
+    stop_grace_period: 40s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: pause
+
+  db:
     image: postgres:16
-    restart: unless-stopped
+    env_file:
+      - .env
     environment:
       POSTGRES_DB: nodus
       POSTGRES_USER: nodus
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - nodus_postgres_data:/var/lib/postgresql/data
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+          size: 268435456
+    stop_grace_period: 1m
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U nodus -d nodus"]
-      interval: 5s
-      retries: 20
-
-  migrate:
-    build: { context: ., dockerfile: Nodus.Api/Dockerfile }
-    image: nodus-api
-    command: ["migrate"]
-    environment: &api-env
-      ConnectionStrings__Postgres: Host=postgres;Database=nodus;Username=nodus;Password=${POSTGRES_PASSWORD}
-      Jwt__SigningKey: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY}
-      EmailOtp__HashPepper: ${HASH_PEPPER:?set HASH_PEPPER}
-      Resend__ApiKey: ${RESEND_API_KEY:-}
-      Resend__From: ${RESEND_FROM:-}
-      Apns__KeyId: ${APNS_KEY_ID:-}
-      Apns__TeamId: ${APNS_TEAM_ID:-}
-      Apns__BundleId: ${APNS_BUNDLE_ID:-}
-      Apns__PrivateKey: ${APNS_PRIVATE_KEY:-}
-      Llm__Providers__0__ApiKey: ${NEUROAPI_API_KEY:-}
-      Llm__Providers__0__Model: ${NEUROAPI_MODEL:-}
-      Llm__Providers__1__ApiKey: ${TIMEWEB_API_KEY:-}
-      Llm__Providers__1__Model: ${TIMEWEB_MODEL:-}
-      ReverseProxy__TrustForwardedHeaders: "true"
-      Observability__PrometheusEnabled: "true"
-    depends_on:
-      postgres: { condition: service_healthy }
-    restart: "no"
-
-  api:
-    image: nodus-api
-    restart: unless-stopped
-    environment: *api-env
-    ports:
-      - "127.0.0.1:8080:8080"
-    stop_grace_period: 40s
-    depends_on:
-      migrate: { condition: service_completed_successfully }
+      test: ["CMD", "pg_isready", "-U", "nodus", "-d", "nodus"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - default
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.nodus.data == true
+      restart_policy:
+        condition: any
+        delay: 5s
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: pause
 
 volumes:
-  pgdata:
+  nodus_postgres_data:
+    name: nodus_postgres_data
+
+networks:
+  edge:
+    external: true
+    name: eatee-proxy
+  mail:
+    external: true
+    name: eatee-mail
+  default:
+    driver: overlay

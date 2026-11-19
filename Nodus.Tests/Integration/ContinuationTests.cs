@@ -30,7 +30,7 @@ public class ContinuationTests(TestApp app) : IClassFixture<TestApp>
     [Fact]
     public async Task Template_suggestion_is_synced_ahead_shown_once_and_accepted_atomically()
     {
-        var user = await app.CreateUserAsync();
+        var user = await app.CreateAiUserAsync();
         var source = Guid.NewGuid();
         await user.Client.PostJsonAsync("/v1/nodes", OneTime(source, "Записаться к врачу"), Key());
         var llmCalls = app.Llm.Requests.Count;
@@ -58,7 +58,7 @@ public class ContinuationTests(TestApp app) : IClassFixture<TestApp>
     [Fact]
     public async Task Ordinary_tasks_are_skipped_without_a_model_call()
     {
-        var user = await app.CreateUserAsync();
+        var user = await app.CreateAiUserAsync();
         var source = Guid.NewGuid();
         var llmCalls = app.Llm.Requests.Count;
 
@@ -75,8 +75,8 @@ public class ContinuationTests(TestApp app) : IClassFixture<TestApp>
     public async Task Model_results_are_cached_for_generic_titles_only()
     {
         app.Llm.Respond = _ => """{"continuation":{"title":"Получить визу"}}""";
-        var first = await app.CreateUserAsync();
-        var second = await app.CreateUserAsync();
+        var first = await app.CreateAiUserAsync();
+        var second = await app.CreateAiUserAsync();
         var (a, b) = (Guid.NewGuid(), Guid.NewGuid());
 
         await first.Client.PostJsonAsync("/v1/nodes", OneTime(a, "Подать документы на визу"), Key());
@@ -94,7 +94,7 @@ public class ContinuationTests(TestApp app) : IClassFixture<TestApp>
     [Fact]
     public async Task Edit_during_processing_discards_the_late_result_and_makes_the_old_one_stale()
     {
-        var user = await app.CreateUserAsync();
+        var user = await app.CreateAiUserAsync();
         var source = Guid.NewGuid();
         await user.Client.PostJsonAsync("/v1/nodes", OneTime(source, "Записаться к врачу"), Key());
         await ProcessOutboxAsync();
@@ -104,7 +104,7 @@ public class ContinuationTests(TestApp app) : IClassFixture<TestApp>
         {
             // The user edits the node while the model is thinking.
             using var scope = app.Services.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<Nodus.Api.Infrastructure.Persistence.NodusDbContext>();
+            var db = scope.ServiceProvider.GetRequiredService<Nodus.Api.Infrastructure.Persistence.DatabaseContext>();
             db.Nodes.Where(n => n.Id == source).ExecuteUpdate(s => s.SetProperty(n => n.Title, "Заказать пиццу на вечер"));
             return """{"continuation":{"title":"Съесть пиццу"}}""";
         };
@@ -122,7 +122,7 @@ public class ContinuationTests(TestApp app) : IClassFixture<TestApp>
     [Fact]
     public async Task Recurring_and_completed_nodes_get_no_continuation()
     {
-        var user = await app.CreateUserAsync();
+        var user = await app.CreateAiUserAsync();
         var (series, done) = (Guid.NewGuid(), Guid.NewGuid());
         await user.Client.PostJsonAsync("/v1/nodes", new
         {

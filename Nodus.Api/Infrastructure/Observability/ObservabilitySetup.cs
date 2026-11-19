@@ -16,6 +16,12 @@ public sealed class ObservabilityOptions
     /// <summary>OTLP endpoint for metrics and traces (Grafana Alloy, OpenTelemetry Collector); empty disables OTLP.</summary>
     public string? OtlpEndpoint { get; init; }
 
+    /// <summary>
+    /// When set, <c>/metrics</c> answers only on this port, which the reverse proxy does not route
+    /// (Kestrel must also listen on it, e.g. <c>ASPNETCORE_URLS=http://+:8080;http://+:9464</c>).
+    /// </summary>
+    public int? MetricsPort { get; init; }
+
     /// <summary>JSON console logs (structured); plain text is easier to read locally.</summary>
     public bool JsonLogs { get; init; } = true;
 }
@@ -24,7 +30,7 @@ public static partial class ObservabilitySetup
 {
     public const string RequestIdHeader = "X-Request-Id";
 
-    public static void AddNodusObservability(this WebApplicationBuilder builder)
+    public static void AddObservabilityServices(this WebApplicationBuilder builder)
     {
         var options = builder.Configuration.GetSection(ObservabilityOptions.Section).Get<ObservabilityOptions>()
                       ?? new ObservabilityOptions();
@@ -44,7 +50,7 @@ public static partial class ObservabilitySetup
             .ConfigureResource(r => r.AddService("nodus-api"))
             .WithMetrics(m =>
             {
-                m.AddMeter(NodusMetrics.MeterName).AddAspNetCoreInstrumentation().AddHttpClientInstrumentation()
+                m.AddMeter(ApiMetrics.MeterName).AddAspNetCoreInstrumentation().AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation();
                 if (options.PrometheusEnabled) m.AddPrometheusExporter();
                 if (otlp is not null) m.AddOtlpExporter(o => o.Endpoint = otlp);
@@ -56,7 +62,7 @@ public static partial class ObservabilitySetup
                 .AddOtlpExporter(o => o.Endpoint = otlp));
     }
 
-    public static void UseNodusObservability(this WebApplication app)
+    public static void UseObservability(this WebApplication app)
     {
         app.Use(async (http, next) =>
         {
@@ -73,8 +79,10 @@ public static partial class ObservabilitySetup
                 await next(http);
         });
 
-        if (app.Configuration.GetSection(ObservabilityOptions.Section).Get<ObservabilityOptions>()?.PrometheusEnabled == true)
-            app.MapPrometheusScrapingEndpoint("/metrics");
+        var options = app.Configuration.GetSection(ObservabilityOptions.Section).Get<ObservabilityOptions>();
+        if (options?.PrometheusEnabled != true) return;
+        var metrics = app.MapPrometheusScrapingEndpoint("/metrics");
+        if (options.MetricsPort is { } port) metrics.RequireHost($"*:{port}");
     }
 
     [GeneratedRegex("^[A-Za-z0-9._-]{8,64}$")]

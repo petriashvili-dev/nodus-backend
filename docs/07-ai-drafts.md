@@ -30,11 +30,13 @@ sequenceDiagram
 
 | Запрос | Что делает |
 |---|---|
-| `POST /v1/ai/node-drafts` `{ text, timezone, reference_time }` | создать задание (`Idempotency-Key`, rate limit `ai`) |
+| `POST /v1/ai/node-drafts` `{ text, timezone, reference_time }` | создать задание (`Idempotency-Key`, rate limit `ai`, функция `ai_drafts`) |
 | `GET /v1/ai/node-drafts` | раздел «Черновики»: задания `queued`, `processing`, `ready` |
 | `GET /v1/ai/node-drafts/{jobId}` | статус и черновики |
 | `POST /v1/ai/node-drafts/{jobId}/confirm` `{ nodes? }` | подтвердить |
 | `POST /v1/ai/node-drafts/{jobId}/cancel` | отменить |
+
+Доступ: функция `ai_drafts` в плане и согласие на AI, иначе `403 feature_not_available` / `403 ai_consent_required` — проверяется до идемпотентности, ключ не сохраняется ([11-plans-and-features.md](11-plans-and-features.md)). Остальные запросы раздела доступны всегда, чтобы начатые задания не терялись при потере доступа.
 
 Проверки входа: текст 1–4000 символов, IANA-зона, `reference_time` не дальше двух суток от текущего времени. Не больше `Ai:MaxJobsPerDay` (50) заданий в сутки → `429 ai_quota_exceeded`.
 
@@ -59,6 +61,8 @@ stateDiagram-v2
 `ready` **не** означает, что узлы созданы. Коды ошибок (`error`): `ai_unavailable` (нет/неверно настроен провайдер), `ai_temporarily_unavailable`, `invalid_ai_response`, `nothing_recognized`, `input_expired`, `timed_out`.
 
 ## Обработка (`AiDraftRunner`)
+
+Жизненный цикл общий с AI-импортом — базовый класс `Infrastructure/Llm/AiJobRunner.cs`; конкретный runner задаёт только промпт, разбор ответа, сохранение результата и тексты push. Итоги считаются в метрике `nodus.ai.jobs` (`kind`, `outcome`).
 
 - Задание берётся, только если оно `queued`/`processing` — повторная постановка или повтор после сбоя ничего не дублирует; старые черновики задания перезаписываются.
 - Временная ошибка LLM (сеть, таймаут, 429, 5xx, невалидный ответ) → повтор Hangfire, всего до `Ai:MaxAttempts` (3) попыток, затем `failed`.

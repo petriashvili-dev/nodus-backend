@@ -26,7 +26,7 @@ public sealed class JwtOptions
     public SymmetricSecurityKey GetSigningKey() => new(Encoding.UTF8.GetBytes(SigningKey));
 }
 
-public sealed class EmailOtpOptions
+public sealed class EmailOtpOptions : IValidatableObject
 {
     public const string Section = "EmailOtp";
 
@@ -37,4 +37,33 @@ public sealed class EmailOtpOptions
 
     /// <summary>Secret mixed into code hashes so that a database leak does not reveal six-digit codes.</summary>
     [Required, MinLength(16)] public string HashPepper { get; init; } = "";
+
+    /// <summary>
+    /// App Review demo accounts: codes for these addresses are <see cref="ReviewCode"/> and are not emailed, because the
+    /// reviewer has no access to the mailbox. Empty outside a review; the code is a secret supplied through environment.
+    /// </summary>
+    public string[]? ReviewEmails { get; init; }
+
+    public string ReviewCode { get; init; } = "";
+
+    /// <summary>Server secret used only to issue codes in ServiceMode:Email=Mock.</summary>
+    public string MockCode { get; init; } = "";
+
+    public static bool IsSixDigitCode(string? code) => code is { Length: 6 } && code.All(char.IsAsciiDigit);
+
+    public bool IsReviewEmail(string normalizedEmail) =>
+        ReviewEmails?.Any(e => EmailAddress.TryNormalize(e, out var review) && review == normalizedEmail) == true;
+
+    public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+    {
+        if (!string.IsNullOrEmpty(MockCode) && !IsSixDigitCode(MockCode))
+            yield return new ValidationResult("MockCode must be six digits when set.", [nameof(MockCode)]);
+        // Empty optional Stack mappings mean the App Review feature is disabled.
+        var reviews = ReviewEmails?.Where(e => !string.IsNullOrWhiteSpace(e)).ToArray() ?? [];
+        if (reviews.Length == 0) yield break;
+        if (!IsSixDigitCode(ReviewCode))
+            yield return new ValidationResult("ReviewCode must be six digits when ReviewEmails are set.", [nameof(ReviewCode)]);
+        if (reviews.Any(e => !EmailAddress.TryNormalize(e, out _)))
+            yield return new ValidationResult("ReviewEmails must be valid email addresses.", [nameof(ReviewEmails)]);
+    }
 }

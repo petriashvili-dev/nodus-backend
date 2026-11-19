@@ -67,7 +67,7 @@ public sealed class ApiResult : IResult, IStatusCodeHttpResult, IValueHttpResult
             return;
         }
 
-        await JsonSerializer.SerializeAsync(httpContext.Response.Body, Value, Value!.GetType(), NodusJson.Options,
+        await JsonSerializer.SerializeAsync(httpContext.Response.Body, Value, Value!.GetType(), ApiJson.Options,
             httpContext.RequestAborted);
     }
 }

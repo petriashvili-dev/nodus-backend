@@ -2,7 +2,7 @@ using Microsoft.Extensions.Diagnostics.HealthChecks;
 
 namespace Nodus.Api.Infrastructure.Persistence;
 
-public sealed class DatabaseHealthCheck(NodusDbContext db) : IHealthCheck
+public sealed class DatabaseHealthCheck(DatabaseContext db) : IHealthCheck
 {
     public async Task<HealthCheckResult> CheckHealthAsync(HealthCheckContext context, CancellationToken ct = default) =>
         await db.Database.CanConnectAsync(ct)
