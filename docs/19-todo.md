@@ -12,3 +12,16 @@
   - Учесть версию правил в обработке предложений и кешировании результатов, чтобы изменения не оставляли устаревшие решения.
 
 Текущая реализация: [08-ai-continuations.md](08-ai-continuations.md).
+
+## AI: лимиты за последние 24 часа
+
+- [ ] Перенести значения AI-лимитов из конфигурации backend в PostgreSQL, чтобы менять их без деплоя и перезапуска.
+  - `Ai__MaxJobsPerDay` — 50 заданий AI-черновиков на пользователя.
+  - `AiContinuations__MaxLlmCallsPerUserPerDay` — 30 вызовов модели для продолжений на пользователя.
+  - `Import__MaxAiImportsPerDay` — 5 AI-импортов на пользователя.
+  - Сохранить скользящее окно последних 24 часов, а не сброс по календарной дате.
+  - Предусмотреть серверное управление значениями, их валидацию и обновляемый кеш настроек в памяти.
+
+Сейчас значения заданы в `Nodus.Api/appsettings.json` и defaults классов Options; переопределяются через Environment Dokploy после пересоздания backend. Использование уже считается запросами к PostgreSQL по `CreatedAt` / `LlmCalledAt` относительно `now.AddDays(-1)`.
+
+Код: `AiDrafts/AiDraftService.cs`, `AiContinuations/ContinuationService.cs`, `AiContinuations/ContinuationRunner.cs`, `DataPortability/ImportService.cs`. Текущие переменные: [13-environment.md](13-environment.md).
