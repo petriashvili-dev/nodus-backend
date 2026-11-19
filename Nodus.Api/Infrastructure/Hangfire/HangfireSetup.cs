@@ -26,7 +26,7 @@ public sealed class HangfireOptions
 
 public static class HangfireSetup
 {
-    public static IServiceCollection AddNodusHangfire(this IServiceCollection services, IConfiguration configuration,
+    public static IServiceCollection AddBackgroundJobServices(this IServiceCollection services, IConfiguration configuration,
         string connectionString)
     {
         services.AddScoped<MaintenanceJob>();

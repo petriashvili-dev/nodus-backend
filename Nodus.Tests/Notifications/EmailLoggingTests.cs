@@ -4,11 +4,11 @@ using Microsoft.Extensions.FileProviders;
 using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Nodus.Api;
-using Nodus.Api.Infrastructure.Resend;
+using Nodus.Api.Infrastructure.Email;
 
 namespace Nodus.Tests.Notifications;
 
-/// <summary>One-time codes must not reach logs outside Development; Production refuses to run without Resend.</summary>
+/// <summary>One-time codes must not reach logs outside Development; Production Live requires SMTP.</summary>
 public class EmailLoggingTests
 {
     private const string Body = "<p>Ваш код: <strong>123456</strong></p>";
@@ -31,19 +31,20 @@ public class EmailLoggingTests
     }
 
     [Fact]
-    public void Production_without_a_Resend_key_fails_to_start()
+    public void Production_without_an_SMTP_host_fails_to_start()
     {
-        var error = Assert.Throws<InvalidOperationException>(() => NodusApplication.Build([], builder =>
+        var error = Assert.Throws<InvalidOperationException>(() => ApplicationHost.Build([], builder =>
         {
             builder.Environment.EnvironmentName = Environments.Production;
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Postgres"] = "Host=localhost;Database=unused",
-                ["Resend:ApiKey"] = ""
+                ["ServiceMode:Email"] = "Live",
+                ["EmailOptions:Smtp:Host"] = ""
             });
         }));
 
-        Assert.Contains("Resend:ApiKey", error.Message);
+        Assert.Contains("EmailOptions:Smtp:Host", error.Message);
     }
 
     private sealed class Environment(string name) : IHostEnvironment

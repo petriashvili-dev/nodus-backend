@@ -8,19 +8,17 @@ using Microsoft.IdentityModel.JsonWebTokens;
 using Microsoft.IdentityModel.Tokens;
 using Nodus.Api.Common;
 using Nodus.Api.Infrastructure.Persistence;
-using Nodus.Api.Infrastructure.Resend;
-using Resend;
+using Nodus.Api.Infrastructure.Email;
 
 namespace Nodus.Api.Authentication;
 
 public static class AuthenticationSetup
 {
-    public static IServiceCollection AddNodusAuthentication(this IServiceCollection services, IConfiguration configuration,
+    public static IServiceCollection AddAuthenticationServices(this IServiceCollection services, IConfiguration configuration,
         IHostEnvironment environment)
     {
         services.AddOptions<JwtOptions>().BindConfiguration(JwtOptions.Section).ValidateDataAnnotations().ValidateOnStart();
         services.AddOptions<EmailOtpOptions>().BindConfiguration(EmailOtpOptions.Section).ValidateDataAnnotations().ValidateOnStart();
-        services.AddOptions<ResendOptions>().BindConfiguration(ResendOptions.Section);
 
         services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme).AddJwtBearer();
         services.AddOptions<JwtBearerOptions>(JwtBearerDefaults.AuthenticationScheme)
@@ -58,7 +56,7 @@ public static class AuthenticationSetup
                             UserExistsCacheKey(userId), async entry =>
                             {
                                 entry.AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(1);
-                                return await services.GetRequiredService<NodusDbContext>().Users
+                                return await services.GetRequiredService<DatabaseContext>().Users
                                     .AnyAsync(u => u.Id == userId, context.HttpContext.RequestAborted);
                             });
                         if (!exists) context.Fail("The account no longer exists.");
@@ -78,23 +76,7 @@ public static class AuthenticationSetup
         services.AddScoped<AccountDeletionService>();
         services.AddScoped<IEmailOtpService, EmailOtpService>();
 
-        if (string.IsNullOrWhiteSpace(configuration[$"{ResendOptions.Section}:ApiKey"]))
-        {
-            // Without email, codes could not be delivered at all; refuse to start rather than run silently broken.
-            if (environment.IsProduction())
-                throw new InvalidOperationException("Resend:ApiKey is required in Production to deliver email codes.");
-            services.TryAddSingleton<IEmailSender, LoggingEmailSender>();
-        }
-        else
-        {
-            var proxy = configuration.GetSection($"{ResendOptions.Section}:Proxy").Get<ResendProxyOptions>() ?? new();
-            if (!proxy.IsValid())
-                throw new InvalidOperationException(
-                    "Resend:Proxy:Url must be an absolute http, https or socks5 URL without credentials (use Username/Password).");
-            services.Configure<ResendClientOptions>(o => o.ApiToken = configuration[$"{ResendOptions.Section}:ApiKey"]!);
-            services.AddHttpClient<IResend, ResendClient>().ConfigurePrimaryHttpMessageHandler(proxy.CreateHandler);
-            services.TryAddScoped<IEmailSender, ResendEmailSender>();
-        }
+        services.AddEmailTransport(configuration, environment);
 
         return services;
     }

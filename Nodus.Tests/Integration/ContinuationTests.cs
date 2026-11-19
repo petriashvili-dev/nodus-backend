@@ -104,7 +104,7 @@ public class ContinuationTests(TestApp app) : IClassFixture<TestApp>
         {
             // The user edits the node while the model is thinking.
             using var scope = app.Services.CreateScope();
-            var db = scope.ServiceProvider.GetRequiredService<Nodus.Api.Infrastructure.Persistence.NodusDbContext>();
+            var db = scope.ServiceProvider.GetRequiredService<Nodus.Api.Infrastructure.Persistence.DatabaseContext>();
             db.Nodes.Where(n => n.Id == source).ExecuteUpdate(s => s.SetProperty(n => n.Title, "Заказать пиццу на вечер"));
             return """{"continuation":{"title":"Съесть пиццу"}}""";
         };

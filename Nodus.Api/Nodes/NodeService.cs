@@ -41,7 +41,7 @@ public sealed class NodeDtoFactory(IRecurrenceProjectionService projection, IOpt
 }
 
 public sealed class NodeService(
-    NodusDbContext db,
+    DatabaseContext db,
     UnitOfWork unitOfWork,
     NodeAccess access,
     NodeHistoryLoader histories,

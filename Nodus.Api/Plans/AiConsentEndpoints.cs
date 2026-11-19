@@ -17,7 +17,7 @@ public static class AiConsentEndpoints
     /// Grants or withdraws consent to send the user's content to AI providers. Repeating a grant keeps the moment of
     /// the first one; the change reaches the user's other devices through sync.
     /// </summary>
-    private static async Task<ApiResult> ChangeAsync(AiConsentRequest request, HttpContext http, NodusDbContext db,
+    private static async Task<ApiResult> ChangeAsync(AiConsentRequest request, HttpContext http, DatabaseContext db,
         UnitOfWork unitOfWork, FeatureAccess access, TimeProvider time, CancellationToken ct)
     {
         if (request.Granted is not { } granted)

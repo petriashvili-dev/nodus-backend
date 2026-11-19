@@ -17,7 +17,7 @@ public sealed record AddMemberRequest(Guid? UserId);
 /// participants, with a tombstone for whoever lost access.
 /// </summary>
 public sealed class SharingService(
-    NodusDbContext db,
+    DatabaseContext db,
     UnitOfWork unitOfWork,
     NodeAccess access,
     NodeHistoryLoader histories,

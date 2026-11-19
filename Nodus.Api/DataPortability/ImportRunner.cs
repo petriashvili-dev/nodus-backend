@@ -20,7 +20,7 @@ public sealed class ImportRequestedOutboxHandler(IBackgroundJobs jobs) : IOutbox
 
     public Task HandleAsync(OutboxEvent outboxEvent, CancellationToken ct)
     {
-        var payload = JsonSerializer.Deserialize<ImportRequestedPayload>(outboxEvent.Payload, NodusJson.Options)!;
+        var payload = JsonSerializer.Deserialize<ImportRequestedPayload>(outboxEvent.Payload, ApiJson.Options)!;
         return jobs.EnqueueAsync<ImportRunner>(r => r.RunAsync(payload.JobId, CancellationToken.None), HangfireQueues.Imports);
     }
 }
@@ -31,7 +31,7 @@ public sealed class ImportRequestedOutboxHandler(IBackgroundJobs jobs) : IOutbox
 /// until the user confirms; the uploaded text is erased when the conversion ends, successfully or not.
 /// </summary>
 public sealed class ImportRunner(
-    NodusDbContext db,
+    DatabaseContext db,
     UnitOfWork unitOfWork,
     ImportService imports,
     ILlmClient llm,
@@ -106,8 +106,8 @@ public sealed class ImportRunner(
                 : null;
             return JsonSerializer.Serialize(new
             {
-                source = ImportFormat.NodusSource, version = ImportFormat.CurrentVersion, timezone, nodes
-            }, NodusJson.Options);
+                source = ImportFormat.NativeSource, version = ImportFormat.CurrentVersion, timezone, nodes
+            }, ApiJson.Options);
         }
         catch (JsonException e)
         {

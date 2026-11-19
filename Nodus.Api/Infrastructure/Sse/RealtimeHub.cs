@@ -84,7 +84,7 @@ public sealed class SyncChangedOutboxHandler(IRealtimeHub hub) : IOutboxHandler
 
     public Task HandleAsync(OutboxEvent outboxEvent, CancellationToken ct)
     {
-        var payload = JsonSerializer.Deserialize<SyncChangedPayload>(outboxEvent.Payload, NodusJson.Options)!;
+        var payload = JsonSerializer.Deserialize<SyncChangedPayload>(outboxEvent.Payload, ApiJson.Options)!;
         foreach (var recipient in payload.Recipients) hub.Publish(recipient.UserId, new SyncSignal(recipient.Revision));
         return Task.CompletedTask;
     }

@@ -109,7 +109,7 @@ PUT /v1/me/ai-consent      (Idempotency-Key)
 
 ### Выдача плана
 
-Команда приложения (как `migrate`, через `NodusApplication.TryRunCommandAsync`), без HTTP-эндпоинта — меньше поверхности атаки:
+Команда приложения (как `migrate`, через `ApplicationHost.TryRunCommandAsync`), без HTTP-эндпоинта — меньше поверхности атаки:
 
 ```bash
 dotnet Nodus.Api.dll plan set --email user@example.com --plan plus [--expires 2027-01-01T00:00:00Z]
@@ -117,7 +117,7 @@ dotnet Nodus.Api.dll plan set --user-id <uuid> --plan standard
 dotnet Nodus.Api.dll plan list
 ```
 
-В контейнере: `docker compose run --rm nodus-api plan set …`. Команда меняет план в транзакции через `UnitOfWork` с записью в `ChangeJournal`, пишет `plan_source = manual`, логирует только `user_id` и план (без email). Выдавать стоит аккаунтам с привязанным email: анонимный аккаунт теряется при переустановке.
+В контейнере: `docker exec <API_CONTAINER_ID> dotnet Nodus.Api.dll plan set …`. Команда меняет план в транзакции через `UnitOfWork` с записью в `ChangeJournal`, пишет `plan_source = manual`, логирует только `user_id` и план (без email). Выдавать стоит аккаунтам с привязанным email: анонимный аккаунт теряется при переустановке.
 
 ### Наблюдаемость
 

@@ -44,7 +44,7 @@ public enum AppConfigChange
 }
 
 public sealed partial class AppConfigService(
-    NodusDbContext db,
+    DatabaseContext db,
     IMemoryCache cache,
     IOptions<AppConfigOptions> options,
     IOptions<AiOptions> ai,
@@ -118,7 +118,7 @@ public sealed partial class AppConfigService(
             },
             ["updated_at"] = entries.Count == 0 ? null : entries.Max(e => e.UpdatedAt)
         };
-        var json = body.ToJsonString(NodusJson.Options);
+        var json = body.ToJsonString(ApiJson.Options);
         return new AppConfigDocument(json, $"\"{Convert.ToHexStringLower(SHA256.HashData(Encoding.UTF8.GetBytes(json)))[..32]}\"");
     }
 

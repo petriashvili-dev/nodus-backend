@@ -4,7 +4,7 @@ using Nodus.Api.Sync;
 
 namespace Nodus.Api.DataPortability;
 
-public sealed class ImportJobSyncProvider(NodusDbContext db, ImportService imports) : ISyncEntityProvider
+public sealed class ImportJobSyncProvider(DatabaseContext db, ImportService imports) : ISyncEntityProvider
 {
     public SyncEntityType EntityType => SyncEntityType.ImportJob;
 

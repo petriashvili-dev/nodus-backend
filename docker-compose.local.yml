@@ -23,8 +23,17 @@ services:
       ConnectionStrings__Postgres: Host=postgres;Database=nodus;Username=nodus;Password=${POSTGRES_PASSWORD}
       Jwt__SigningKey: ${JWT_SIGNING_KEY:?set JWT_SIGNING_KEY}
       EmailOtp__HashPepper: ${HASH_PEPPER:?set HASH_PEPPER}
-      Resend__ApiKey: ${RESEND_API_KEY:-}
-      Resend__From: ${RESEND_FROM:-}
+      ServiceMode__Email: ${ServiceMode__Email:-Live}
+      EmailOtp__MockCode: ${EmailOtp__MockCode:-}
+      EmailOptions__FromAddress: ${EmailOptions__FromAddress:-no-reply@nodus.app}
+      EmailOptions__FromName: ${EmailOptions__FromName:-Nodus}
+      EmailOptions__Smtp__Host: ${EmailOptions__Smtp__Host:-}
+      EmailOptions__Smtp__Port: ${EmailOptions__Smtp__Port:-25}
+      EmailOptions__Smtp__Security: ${EmailOptions__Smtp__Security:-None}
+      EmailOptions__Smtp__Authentication: ${EmailOptions__Smtp__Authentication:-false}
+      EmailOptions__Smtp__Username: ${EmailOptions__Smtp__Username:-}
+      EmailOptions__Smtp__Password: ${EmailOptions__Smtp__Password:-}
+      EmailOptions__Smtp__TimeoutSeconds: ${EmailOptions__Smtp__TimeoutSeconds:-15}
       Apns__KeyId: ${APNS_KEY_ID:-}
       Apns__TeamId: ${APNS_TEAM_ID:-}
       Apns__BundleId: ${APNS_BUNDLE_ID:-}

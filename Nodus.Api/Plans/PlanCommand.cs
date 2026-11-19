@@ -14,7 +14,7 @@ public enum PlanChangeOutcome
 }
 
 /// <summary>Sets plans by hand (test group). There is no HTTP endpoint for it: only operators with shell access run it.</summary>
-public sealed class PlanService(NodusDbContext db, UnitOfWork unitOfWork, TimeProvider time, ILogger<PlanService> logger)
+public sealed class PlanService(DatabaseContext db, UnitOfWork unitOfWork, TimeProvider time, ILogger<PlanService> logger)
 {
     /// <summary>The change is journaled for the user, so their devices receive the new <c>features</c> through sync.</summary>
     public async Task<PlanChangeOutcome> SetAsync(Guid? userId, string? email, UserPlan plan, DateTimeOffset? expiresAt,
@@ -60,7 +60,7 @@ public static class PlanCommand
         switch (args)
         {
             case ["list"]:
-                await ListAsync(provider.GetRequiredService<NodusDbContext>(), provider.GetRequiredService<TimeProvider>(), output, ct);
+                await ListAsync(provider.GetRequiredService<DatabaseContext>(), provider.GetRequiredService<TimeProvider>(), output, ct);
                 return 0;
             case ["set", .. var options]:
                 return await SetAsync(provider.GetRequiredService<PlanService>(), provider.GetRequiredService<TimeProvider>(),
@@ -139,7 +139,7 @@ public static class PlanCommand
     }
 
     /// <summary>Users with a non-standard plan, expired ones included, so they can be renewed or reset.</summary>
-    private static async Task ListAsync(NodusDbContext db, TimeProvider time, TextWriter output, CancellationToken ct)
+    private static async Task ListAsync(DatabaseContext db, TimeProvider time, TextWriter output, CancellationToken ct)
     {
         var users = await db.Users.AsNoTracking().Where(u => u.Plan != UserPlan.Standard).OrderBy(u => u.CreatedAt)
             .Select(u => new { u.Id, u.Email, u.Plan, u.PlanExpiresAt, u.AiConsentAt })

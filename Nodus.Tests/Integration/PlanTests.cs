@@ -185,7 +185,7 @@ public class PlanTests(TestApp app) : IClassFixture<TestApp>
     }
 
     [Fact]
-    public async Task Ai_import_needs_the_feature_but_nodus_files_do_not()
+    public async Task Ai_import_needs_the_feature_but_native_files_do_not()
     {
         var user = await app.CreateUserAsync();
         var nodusFile = JsonSerializer.Serialize(new

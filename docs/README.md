@@ -17,6 +17,12 @@
 | [11-plans-and-features.md](11-plans-and-features.md) | Планы (обычный / Nodus+), доступ к AI-функциям, согласие на AI, выдача плана |
 | [12-app-config.md](12-app-config.md) | Конфигурация клиента в БД: ссылки, версии, переключатели; `GET /v1/app-config`, команда `config` |
 | [13-environment.md](13-environment.md) | Все переменные окружения: назначение и значения по умолчанию |
+| [14-smtp.md](14-smtp.md) | Собственный SMTP, сеть Postfix, настройка отправителя, доставка и проверки |
+| [15-service-modes.md](15-service-modes.md) | Серверные Live/Mock режимы, фиксированный код без отправки почты |
+| [16-swarm-stack.md](16-swarm-stack.md) | Docker Swarm Stack: запуск, миграции, volume и узел PostgreSQL, Traefik, обновление |
+| [17-production-environment.md](17-production-environment.md) | Первая production-установка: все переменные со значениями, TODO, описание каждого параметра |
+| [18-domain-and-tls.md](18-domain-and-tls.md) | nodus.eatee.ru, адрес iOS-клиента и TLS через существующий Traefik сервера Eatee |
+| [19-todo.md](19-todo.md) | Запланированные изменения backend |
 | [adr/](adr/) | Записи архитектурных решений (ADR) |
 | [ios/](ios/README.md) | **Руководство для iOS-разработки:** что делать на клиенте — авторизация, Outbox и ошибки, sync, лента и уведомления, push, шаринг, AI, импорт, справочник API |
 

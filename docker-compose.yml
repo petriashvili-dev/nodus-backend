@@ -1,97 +1,129 @@
-# Nodus backend — staging/production deployment (Dokploy + Traefik), same layout as eatee-backend.
-# One API container (HTTP API, SSE, outbox dispatcher, Hangfire server) and PostgreSQL.
-# The image is built by CI and pulled from GHCR; secrets come from .env next to this file (see .env.example).
-# Local development: docker-compose.local.yml.
+# Production Docker Swarm Stack (Dokploy: Compose Type = Stack).
+# Eatee production server. Fixed image/domain/networks; Dokploy writes Environment to .env.
+version: "3.8"
+
 services:
-  nodus.api:
+  api:
     image: ghcr.io/petriashvili-dev/nodus-backend:latest
-    pull_policy: always
-    container_name: nodus-api
     env_file:
       - .env
     environment: &api-env
-      ASPNETCORE_ENVIRONMENT: ${ASPNETCORE_ENVIRONMENT:-Production}
-      # 8080 — public API behind Traefik; 9464 — /metrics for scraping inside the Docker network only.
+      ASPNETCORE_ENVIRONMENT: Production
       ASPNETCORE_URLS: http://+:8080;http://+:9464
+      Database__MigrateOnStartup: "false"
       Observability__MetricsPort: "9464"
-      ConnectionStrings__Postgres: Host=nodus-db;Port=5432;Database=${POSTGRES_DB};Username=${POSTGRES_USER};Password=${POSTGRES_PASSWORD}
-      # TLS terminates on Traefik; trust its X-Forwarded-* for client IPs (rate limits) and scheme.
-      ReverseProxy__TrustForwardedHeaders: "true"
-    expose:
-      - "8080"
-      - "9464"
-    depends_on:
-      nodus.migrate:
-        condition: service_completed_successfully
-    restart: always
-    # SSE streams and Hangfire workers get 30 s to finish (HostOptions.ShutdownTimeout).
+      Logging__LogLevel__Microsoft.AspNetCore: Warning
+      Logging__LogLevel__Microsoft.EntityFrameworkCore.Database.Command: Warning
     stop_grace_period: 40s
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8080/health/ready"]
+      interval: 15s
+      timeout: 3s
+      retries: 3
+      start_period: 5m
     networks:
-      - dokploy-network
+      - edge
+      - mail
       - default
-    labels:
-      - traefik.enable=true
-      - traefik.docker.network=dokploy-network
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: any
+        delay: 5s
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: rollback
+        monitor: 5m
+      rollback_config:
+        parallelism: 1
+        order: stop-first
+        monitor: 5m
+      labels:
+        - traefik.enable=true
+        - traefik.swarm.network=eatee-proxy
+        - traefik.docker.network=eatee-proxy
+        - traefik.http.routers.nodus-web.rule=Host(`nodus.eatee.ru`)
+        - traefik.http.routers.nodus-web.entrypoints=web
+        - traefik.http.routers.nodus-web.middlewares=nodus-redirect
+        - traefik.http.routers.nodus-web.service=nodus
+        - traefik.http.middlewares.nodus-redirect.redirectscheme.scheme=https
+        - traefik.http.middlewares.nodus-redirect.redirectscheme.permanent=true
+        - traefik.http.routers.nodus-secure.rule=Host(`nodus.eatee.ru`)
+        - traefik.http.routers.nodus-secure.entrypoints=websecure
+        - traefik.http.routers.nodus-secure.tls=true
+        - traefik.http.routers.nodus-secure.tls.certresolver=regru
+        - traefik.http.routers.nodus-secure.service=nodus
+        - traefik.http.services.nodus.loadbalancer.server.port=8080
 
-      # ── ${NODUS_DOMAIN} ───────────────────────────────────────
-      - traefik.http.routers.nodus-web.rule=Host(`${NODUS_DOMAIN}`)
-      - traefik.http.routers.nodus-web.entrypoints=web
-      - traefik.http.routers.nodus-web.middlewares=redirect-to-https@file
-      - traefik.http.routers.nodus-secure.rule=Host(`${NODUS_DOMAIN}`)
-      - traefik.http.routers.nodus-secure.entrypoints=websecure
-      - traefik.http.routers.nodus-secure.tls=true
-      - traefik.http.routers.nodus-secure.service=nodus
-
-      # ── сервис (один на все роутеры) ──────────────────────────
-      - traefik.http.services.nodus.loadbalancer.server.port=8080
-
-  # Release step: applies EF Core migrations and exits; the API starts only after it succeeded.
-  nodus.migrate:
+  # A completed task (0/1 running) is normal. It runs again when the image/spec changes.
+  migrate:
     image: ghcr.io/petriashvili-dev/nodus-backend:latest
-    pull_policy: always
-    container_name: nodus-migrate
     command: ["migrate"]
     env_file:
       - .env
     environment: *api-env
-    depends_on:
-      nodus.db:
-        condition: service_healthy
-    restart: "no"
+    healthcheck:
+      disable: true
     networks:
       - default
+    stop_grace_period: 40s
+    deploy:
+      replicas: 1
+      restart_policy:
+        condition: on-failure
+        delay: 5s
+        max_attempts: 5
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: pause
 
-  nodus.db:
+  db:
     image: postgres:16
-    container_name: nodus-db
-    pull_policy: missing
+    env_file:
+      - .env
     environment:
-      POSTGRES_DB: ${POSTGRES_DB}
-      POSTGRES_USER: ${POSTGRES_USER}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
-    expose:
-      - "5432"
+      POSTGRES_DB: nodus
+      POSTGRES_USER: nodus
     volumes:
       - nodus_postgres_data:/var/lib/postgresql/data
-    restart: always
-    # Даём Postgres время на корректный shutdown (checkpoint) вместо SIGKILL через 10 с.
+      - type: tmpfs
+        target: /dev/shm
+        tmpfs:
+          size: 268435456
     stop_grace_period: 1m
-    # Дефолтные 64 МБ /dev/shm мало для параллельных запросов.
-    shm_size: 256mb
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U \"$${POSTGRES_USER}\" -d \"$${POSTGRES_DB}\""]
+      test: ["CMD", "pg_isready", "-U", "nodus", "-d", "nodus"]
       interval: 10s
       timeout: 5s
       retries: 10
       start_period: 30s
     networks:
       - default
+    deploy:
+      replicas: 1
+      placement:
+        constraints:
+          - node.labels.nodus.data == true
+      restart_policy:
+        condition: any
+        delay: 5s
+      update_config:
+        parallelism: 1
+        order: stop-first
+        failure_action: pause
 
 volumes:
   nodus_postgres_data:
+    name: nodus_postgres_data
 
 networks:
-  dokploy-network:
+  edge:
     external: true
+    name: eatee-proxy
+  mail:
+    external: true
+    name: eatee-mail
   default:
-    driver: bridge
+    driver: overlay

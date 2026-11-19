@@ -92,7 +92,7 @@ dotnet run --project Nodus.Api -- plan set --user-id <uuid> --plan plus --expire
 dotnet run --project Nodus.Api -- plan set --email user@example.com --plan standard
 dotnet run --project Nodus.Api -- plan list
 
-docker compose run --rm nodus-api plan set --email user@example.com --plan plus   # на сервере
+docker exec <API_CONTAINER_ID> dotnet Nodus.Api.dll plan set --email user@example.com --plan plus   # на сервере
 ```
 
 | Код выхода | Значение |

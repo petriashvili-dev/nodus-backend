@@ -83,7 +83,7 @@ public sealed class OutboxDispatcher(
     public async Task<int> DispatchBatchAsync(CancellationToken ct)
     {
         await using var scope = scopes.CreateAsyncScope();
-        var db = scope.ServiceProvider.GetRequiredService<NodusDbContext>();
+        var db = scope.ServiceProvider.GetRequiredService<DatabaseContext>();
         var handlers = scope.ServiceProvider.GetServices<IOutboxHandler>().ToDictionary(h => h.EventType);
         var now = time.GetUtcNow();
 
@@ -106,13 +106,13 @@ public sealed class OutboxDispatcher(
                     throw new InvalidOperationException($"No outbox handler for '{outboxEvent.Type}'.");
                 await handler.HandleAsync(outboxEvent, ct);
                 outboxEvent.ProcessedAt = now;
-                NodusMetrics.OutboxDispatched(outboxEvent.Type, "processed", now - outboxEvent.CreatedAt);
+                ApiMetrics.OutboxDispatched(outboxEvent.Type, "processed", now - outboxEvent.CreatedAt);
             }
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 outboxEvent.Attempts++;
                 outboxEvent.LastError = e.GetType().Name;
-                NodusMetrics.OutboxDispatched(outboxEvent.Type,
+                ApiMetrics.OutboxDispatched(outboxEvent.Type,
                     outboxEvent.Attempts >= options.Value.MaxAttempts ? "abandoned" : "failed", TimeSpan.Zero);
                 if (outboxEvent.Attempts >= options.Value.MaxAttempts)
                 {

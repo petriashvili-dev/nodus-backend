@@ -27,7 +27,10 @@ public enum ApnsOutcome
     Retryable,
 
     /// <summary>Configuration or payload problem; retrying will not help.</summary>
-    Failed
+    Failed,
+
+    /// <summary>Sending is disabled by server configuration.</summary>
+    Skipped
 }
 
 public sealed record ApnsResult(ApnsOutcome Outcome, string? Reason = null, ApnsEnvironment? Environment = null);
@@ -51,6 +54,7 @@ public sealed class ApnsClient(
     public async Task<ApnsResult> SendAsync(string deviceToken, ApnsEnvironment environment, ApnsAlert alert, CancellationToken ct)
     {
         var o = options.Value;
+        if (!o.Enabled) return new ApnsResult(ApnsOutcome.Skipped, "disabled");
         if (!o.IsConfigured) return new ApnsResult(ApnsOutcome.Failed, "not_configured");
         try
         {

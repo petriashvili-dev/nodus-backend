@@ -5,7 +5,7 @@ using System.Text.Json.Serialization;
 namespace Nodus.Api.Common;
 
 /// <summary>Single JSON contract for HTTP, persisted payloads and stored idempotent responses.</summary>
-public static class NodusJson
+public static class ApiJson
 {
     public static readonly JsonSerializerOptions Options = Configure(new JsonSerializerOptions(JsonSerializerDefaults.Web));
 

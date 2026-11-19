@@ -31,7 +31,7 @@ using Nodus.Api.Sync;
 namespace Nodus.Api;
 
 /// <summary>Composition root, shared by <c>Program</c> and integration tests.</summary>
-public static class NodusApplication
+public static class ApplicationHost
 {
     /// <param name="configure">
     /// Runs before the application registrations; tests use it to add configuration and to pre-register
@@ -47,10 +47,10 @@ public static class NodusApplication
         var configuration = builder.Configuration;
 
         builder.WebHost.ConfigureKestrel(k => k.Limits.MaxRequestBodySize = Limits.RequestBodyBytes);
-        builder.AddNodusObservability();
+        builder.AddObservabilityServices();
         // Time for SSE streams and Hangfire workers to finish on SIGTERM.
         services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(30));
-        services.ConfigureHttpJsonOptions(o => NodusJson.Configure(o.SerializerOptions));
+        services.ConfigureHttpJsonOptions(o => ApiJson.Configure(o.SerializerOptions));
         services.AddProblemDetails();
         services.TryAddSingleton(TimeProvider.System);
         services.Configure<ForwardedHeadersOptions>(o =>
@@ -64,12 +64,15 @@ public static class NodusApplication
             }
         });
 
-        var connectionString = configuration.GetConnectionString("Postgres")
-                               ?? throw new InvalidOperationException("ConnectionStrings:Postgres is required.");
-        services.AddDbContext<NodusDbContext>(o => NodusDbContextFactory.Configure(o, connectionString));
+        var connectionString = configuration.GetConnectionString("Postgres");
+        if (string.IsNullOrWhiteSpace(connectionString))
+            throw new InvalidOperationException("ConnectionStrings:Postgres is required.");
+        services.AddDbContext<DatabaseContext>(o => DatabaseContextFactory.Configure(o, connectionString));
+        services.AddOptions<DatabaseStartupOptions>().BindConfiguration(DatabaseStartupOptions.Section)
+            .ValidateDataAnnotations().ValidateOnStart();
 
-        services.AddNodusAuthentication(configuration, builder.Environment);
-        services.AddNodusRateLimiting(configuration);
+        services.AddAuthenticationServices(configuration, builder.Environment);
+        services.AddRateLimitingServices(configuration);
 
         services.AddSingleton<IRecurrenceCalculator, RecurrenceCalculator>();
         services.AddSingleton<IRecurrenceProjectionService, RecurrenceProjectionService>();
@@ -80,7 +83,7 @@ public static class NodusApplication
         services.AddScoped<NodeService>();
 
         services.AddSelectionResolver<ISyncEntityProvider, SyncEntityType, SyncEntityType>(
-            provider => provider.EntityType, (key, input) => key == input, typeof(NodusApplication).Assembly);
+            provider => provider.EntityType, (key, input) => key == input, typeof(ApplicationHost).Assembly);
         services.AddScoped<ChangeJournal>();
         services.AddScoped<UnitOfWork>();
         services.AddOptions<OutboxOptions>().BindConfiguration(OutboxOptions.Section);
@@ -120,7 +123,7 @@ public static class NodusApplication
         services.AddOptions<AppConfigOptions>().BindConfiguration(AppConfigOptions.Section);
         services.AddScoped<AppConfigService>();
 
-        services.AddNodusLlm();
+        services.AddLlmServices();
         services.AddOptions<AiOptions>().BindConfiguration(AiOptions.Section);
         services.AddScoped<AiDraftService>();
         services.AddScoped<AiDraftRunner>();
@@ -133,20 +136,20 @@ public static class NodusApplication
 
         services.AddOptions<ImportOptions>().BindConfiguration(ImportOptions.Section);
         services.AddSelectionResolver<IImportFormatParser, ImportFormat, ImportFormat>(
-            parser => parser.Format, (key, input) => key == input, typeof(NodusApplication).Assembly);
+            parser => parser.Format, (key, input) => key == input, typeof(ApplicationHost).Assembly);
         services.AddScoped<ExportService>();
         services.AddScoped<ImportService>();
         services.AddScoped<ImportRunner>();
         services.AddScoped<IOutboxHandler, ImportRequestedOutboxHandler>();
 
-        services.AddNodusHangfire(configuration, connectionString);
+        services.AddBackgroundJobServices(configuration, connectionString);
 
         services.AddHealthChecks().AddCheck<DatabaseHealthCheck>("postgres", tags: ["ready"]);
 
         overrideServices?.Invoke(services);
         var app = builder.Build();
         app.UseForwardedHeaders();
-        app.UseNodusObservability();
+        app.UseObservability();
         app.UseExceptionHandler(e => e.Run(WriteUnhandledErrorAsync));
         IdempotencyFilter.EnableRequestBuffering(app);
         app.UseAuthentication();
@@ -179,6 +182,12 @@ public static class NodusApplication
     /// </summary>
     public static async Task<bool> TryRunCommandAsync(WebApplication app, string[] args)
     {
+        if (args is ["wait-for-database"] or ["wait-for-schema"])
+        {
+            Environment.ExitCode = await DatabaseStartup.RunAsync(app.Services, args[0] == "wait-for-schema",
+                Console.Out, CancellationToken.None);
+            return true;
+        }
         if (args is ["plan", .. var planArgs])
         {
             Environment.ExitCode = await PlanCommand.RunAsync(app.Services, planArgs, Console.Out, CancellationToken.None);
@@ -192,10 +201,19 @@ public static class NodusApplication
         }
 
         var migrateOnly = args.Contains("migrate");
+        if (migrateOnly || args is ["serve"])
+        {
+            var code = await DatabaseStartup.RunAsync(app.Services, !migrateOnly, Console.Out, CancellationToken.None);
+            if (code != 0)
+            {
+                Environment.ExitCode = code;
+                return true;
+            }
+        }
         if (migrateOnly || app.Configuration.GetValue<bool>("Database:MigrateOnStartup"))
         {
             await using var scope = app.Services.CreateAsyncScope();
-            await scope.ServiceProvider.GetRequiredService<NodusDbContext>().Database.MigrateAsync();
+            await scope.ServiceProvider.GetRequiredService<DatabaseContext>().Database.MigrateAsync();
         }
 
         // Touches Hangfire storage, so it runs only when serving, never for the migrate command.

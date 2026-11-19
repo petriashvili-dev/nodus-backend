@@ -5,7 +5,7 @@ using Nodus.Api.Sync;
 namespace Nodus.Api.Connections;
 
 /// <summary>Connections from the recipient's point of view; removed ones as tombstones.</summary>
-public sealed class ConnectionSyncProvider(NodusDbContext db, ConnectionService connections) : ISyncEntityProvider
+public sealed class ConnectionSyncProvider(DatabaseContext db, ConnectionService connections) : ISyncEntityProvider
 {
     public SyncEntityType EntityType => SyncEntityType.Connection;
 

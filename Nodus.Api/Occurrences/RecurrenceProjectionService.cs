@@ -35,7 +35,7 @@ public interface IRecurrenceProjectionService
     /// <summary>Occurrences with local dates in [from, to]. Undated one-time nodes are always included.</summary>
     IReadOnlyList<Occurrence> Project(NodeHistory history, DateOnly from, DateOnly to, DateTimeOffset now);
 
-    /// <summary>Feed rule: today's occurrences (if any) plus the nearest occurrence after today.</summary>
+    /// <summary>Feed rule: today's completed occurrences and one nearest tied occurrence, starting today.</summary>
     IReadOnlyList<Occurrence> Highlights(NodeHistory history, DateTimeOffset now);
 
     Occurrence? Find(NodeHistory history, string key, DateTimeOffset now);
@@ -112,7 +112,10 @@ public sealed class RecurrenceProjectionService(IRecurrenceCalculator calculator
 
         var today = ZonedTime.LocalDate(now, ZonedTime.FindZone(history.Node.Timezone));
         var todays = Project(history, today, today, now);
-        return Next(history, today, now) is { } next ? [.. todays, next] : todays;
+        var active = todays.FirstOrDefault(o => o.State == OccurrenceState.Tied) ?? Next(history, today, now);
+        return active is null
+            ? todays.Where(o => o.State == OccurrenceState.Untied).ToList()
+            : [.. todays.Where(o => o.State == OccurrenceState.Untied), active];
     }
 
     public Occurrence? Find(NodeHistory history, string key, DateTimeOffset now)
@@ -132,7 +135,7 @@ public sealed class RecurrenceProjectionService(IRecurrenceCalculator calculator
         for (var from = after.AddDays(1); from <= limit; window = Math.Min(window * 2, 3660))
         {
             var to = Min(from.AddDays(window - 1), limit);
-            if (Project(history, from, to, now).FirstOrDefault() is { } found) return found;
+            if (Project(history, from, to, now).FirstOrDefault(o => o.State == OccurrenceState.Tied) is { } found) return found;
             from = to.AddDays(1);
         }
 

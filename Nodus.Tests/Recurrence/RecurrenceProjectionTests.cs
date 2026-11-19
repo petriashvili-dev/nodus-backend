@@ -114,7 +114,7 @@ public class RecurrenceProjectionTests
     }
 
     [Fact]
-    public void Highlights_show_today_and_nearest_next_or_only_nearest_future()
+    public void Highlights_show_only_one_active_occurrence_starting_today()
     {
         Revise(null, new RecurrenceRule
         {
@@ -125,8 +125,34 @@ public class RecurrenceProjectionTests
         var saturday = _projection.Highlights(History, At("2026-10-17T12:00")).Select(o => o.Date!.Value);
         var sunday = _projection.Highlights(History, At("2026-10-18T12:00")).Select(o => o.Date!.Value);
 
-        Assert.Equal([new(2026, 10, 17), new(2026, 10, 21)], saturday);
+        Assert.Equal([new DateOnly(2026, 10, 17)], saturday);
         Assert.Equal([new DateOnly(2026, 10, 21)], sunday);
+    }
+
+    [Fact]
+    public void Highlights_keep_completed_today_and_skip_completed_future_slots()
+    {
+        Revise(null, Daily(9) with { Times = [new(9, 0), new(18, 0)] });
+        foreach (var (date, slot) in new[] { (new DateOnly(2026, 10, 17), 0), (new DateOnly(2026, 10, 17), 1), (new DateOnly(2026, 10, 18), 0) })
+        {
+            var key = OccurrenceKey.For(0, date, slot);
+            _states[key] = new NodeOccurrenceState { NodeId = _node.Id, OccurrenceKey = key, State = OccurrenceState.Untied, Title = "Зарядка" };
+        }
+        var highlights = _projection.Highlights(History, At("2026-10-17T12:00"));
+        Assert.Equal(2, highlights.Count(o => o.State == OccurrenceState.Untied));
+        var active = Assert.Single(highlights, o => o.State == OccurrenceState.Tied);
+        Assert.Equal((new DateOnly(2026, 10, 18), new TimeOnly(18, 0)), (active.Date!.Value, active.Time!.Value));
+    }
+
+    [Fact]
+    public void Highlights_do_not_resurrect_an_ended_completed_series()
+    {
+        Revise(null, Daily(9) with { Until = new(2026, 10, 17) });
+        var key = OccurrenceKey.For(0, new(2026, 10, 17), 0);
+        _states[key] = new NodeOccurrenceState { NodeId = _node.Id, OccurrenceKey = key, State = OccurrenceState.Untied, Title = "Зарядка" };
+        var completed = Assert.Single(_projection.Highlights(History, At("2026-10-17T12:00")));
+        Assert.Equal(OccurrenceState.Untied, completed.State);
+        Assert.Empty(_projection.Highlights(History, At("2026-10-18T12:00")));
     }
 
     [Fact]

@@ -19,7 +19,7 @@ public enum FeatureCheck
 /// AI features additionally need the user's consent. Results are cached per scope (request or job), so batch
 /// operations do not query the user per item.
 /// </summary>
-public sealed class FeatureAccess(NodusDbContext db, IOptions<PlanOptions> options, TimeProvider time)
+public sealed class FeatureAccess(DatabaseContext db, IOptions<PlanOptions> options, TimeProvider time)
 {
     public const string NotAvailableCode = "feature_not_available";
     public const string ConsentRequiredCode = "ai_consent_required";
@@ -54,12 +54,12 @@ public sealed class FeatureAccess(NodusDbContext db, IOptions<PlanOptions> optio
         var extensions = new Dictionary<string, object?> { ["feature"] = feature };
         if (check == FeatureCheck.NotInPlan)
         {
-            NodusMetrics.FeatureDenied(feature, "not_in_plan");
+            ApiMetrics.FeatureDenied(feature, "not_in_plan");
             return ApiResult.Problem(StatusCodes.Status403Forbidden, NotAvailableCode, "Feature is not available.",
                 extensions: extensions);
         }
 
-        NodusMetrics.FeatureDenied(feature, "consent_required");
+        ApiMetrics.FeatureDenied(feature, "consent_required");
         return ApiResult.Problem(StatusCodes.Status403Forbidden, ConsentRequiredCode,
             "Consent to process data with AI is required.", extensions: extensions);
     }

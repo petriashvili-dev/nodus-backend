@@ -23,11 +23,11 @@ public static class OccurrenceEndpoints
 
     /// <summary>
     /// Server-side projection of the main feed: one-time nodes dated in [from, to] or undated, and for each series
-    /// today's occurrences plus the nearest next one (dates relative to each node's time zone).
+    /// today's completed occurrences plus one nearest tied occurrence (dates relative to each node's time zone).
     /// Clients refresh it on calendar day change even when nothing was edited.
     /// </summary>
     private static async Task<ApiResult> FeedAsync(DateOnly? from, DateOnly? to, HttpContext http, NodeAccess access,
-        NodeHistoryLoader histories, IRecurrenceProjectionService projection, NodusDbContext db, TimeProvider time,
+        NodeHistoryLoader histories, IRecurrenceProjectionService projection, DatabaseContext db, TimeProvider time,
         CancellationToken ct)
     {
         var now = time.GetUtcNow();
@@ -52,7 +52,7 @@ public static class OccurrenceEndpoints
 
     /// <summary>All occurrences of every accessible node in a window — the horizon for local notifications.</summary>
     private static async Task<ApiResult> BulkAsync(DateOnly? from, DateOnly? to, HttpContext http, NodeAccess access,
-        NodeHistoryLoader histories, IRecurrenceProjectionService projection, NodusDbContext db, TimeProvider time,
+        NodeHistoryLoader histories, IRecurrenceProjectionService projection, DatabaseContext db, TimeProvider time,
         CancellationToken ct)
     {
         var now = time.GetUtcNow();
@@ -89,7 +89,7 @@ public static class OccurrenceEndpoints
     private static DateOnly Min(DateOnly a, DateOnly b) => a < b ? a : b;
 
     /// <summary>"Today" for default ranges: in the user's current zone (<c>PUT /v1/me/timezone</c>), UTC if unknown.</summary>
-    private static async Task<DateOnly> TodayAsync(NodusDbContext db, Guid userId, DateTimeOffset now, CancellationToken ct)
+    private static async Task<DateOnly> TodayAsync(DatabaseContext db, Guid userId, DateTimeOffset now, CancellationToken ct)
     {
         var zoneId = await db.Users.Where(u => u.Id == userId).Select(u => u.Timezone).SingleOrDefaultAsync(ct);
         return ZonedTime.TryFindZone(zoneId, out var zone) ? ZonedTime.LocalDate(now, zone) : DateOnly.FromDateTime(now.UtcDateTime);

@@ -5,7 +5,7 @@ using Nodus.Api.Sync;
 namespace Nodus.Api.AiContinuations;
 
 /// <summary>Only ready/accepted/dismissed suggestions are visible; skipped and stale ones are tombstones.</summary>
-public sealed class SuggestionSyncProvider(NodusDbContext db) : ISyncEntityProvider
+public sealed class SuggestionSyncProvider(DatabaseContext db) : ISyncEntityProvider
 {
     public SyncEntityType EntityType => SyncEntityType.Suggestion;
 

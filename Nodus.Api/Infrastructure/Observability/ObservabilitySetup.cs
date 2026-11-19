@@ -30,7 +30,7 @@ public static partial class ObservabilitySetup
 {
     public const string RequestIdHeader = "X-Request-Id";
 
-    public static void AddNodusObservability(this WebApplicationBuilder builder)
+    public static void AddObservabilityServices(this WebApplicationBuilder builder)
     {
         var options = builder.Configuration.GetSection(ObservabilityOptions.Section).Get<ObservabilityOptions>()
                       ?? new ObservabilityOptions();
@@ -50,7 +50,7 @@ public static partial class ObservabilitySetup
             .ConfigureResource(r => r.AddService("nodus-api"))
             .WithMetrics(m =>
             {
-                m.AddMeter(NodusMetrics.MeterName).AddAspNetCoreInstrumentation().AddHttpClientInstrumentation()
+                m.AddMeter(ApiMetrics.MeterName).AddAspNetCoreInstrumentation().AddHttpClientInstrumentation()
                     .AddRuntimeInstrumentation();
                 if (options.PrometheusEnabled) m.AddPrometheusExporter();
                 if (otlp is not null) m.AddOtlpExporter(o => o.Endpoint = otlp);
@@ -62,7 +62,7 @@ public static partial class ObservabilitySetup
                 .AddOtlpExporter(o => o.Endpoint = otlp));
     }
 
-    public static void UseNodusObservability(this WebApplication app)
+    public static void UseObservability(this WebApplication app)
     {
         app.Use(async (http, next) =>
         {

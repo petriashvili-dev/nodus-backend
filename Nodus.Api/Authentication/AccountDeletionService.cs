@@ -15,7 +15,7 @@ namespace Nodus.Api.Authentication;
 /// member of get the updated member list, connections get tombstones.
 /// </summary>
 public sealed class AccountDeletionService(
-    NodusDbContext db,
+    DatabaseContext db,
     UnitOfWork unitOfWork,
     NodeAccess access,
     IMemoryCache cache,

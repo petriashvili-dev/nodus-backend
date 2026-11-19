@@ -16,7 +16,7 @@ public static class TimezoneEndpoints
     /// The device moved to another time zone: store it and adapt the user's nodes in one transaction.
     /// Repeating the call with the same zone changes nothing.
     /// </summary>
-    private static async Task<ApiResult> ChangeAsync(ChangeTimezoneRequest request, HttpContext http, NodusDbContext db,
+    private static async Task<ApiResult> ChangeAsync(ChangeTimezoneRequest request, HttpContext http, DatabaseContext db,
         NodeService nodes, UnitOfWork unitOfWork, TimeProvider time, CancellationToken ct)
     {
         if (!ZonedTime.TryFindZone(request.Timezone, out _))

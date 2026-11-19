@@ -39,11 +39,11 @@ public static class SyncEndpoints
     /// (or a tombstone when it was deleted or is no longer accessible). The client applies the page and stores
     /// <c>next_cursor</c> atomically and continues while <c>has_more</c>.
     /// </summary>
-    private static async Task<ApiResult> DeltaAsync(long? cursor, int? limit, HttpContext http, NodusDbContext db,
+    private static async Task<ApiResult> DeltaAsync(long? cursor, int? limit, HttpContext http, DatabaseContext db,
         ISelectionResolver<SyncEntityType, ISyncEntityProvider> providers, CancellationToken ct)
     {
         var userId = http.User.GetUserId();
-        NodusMetrics.Sync("delta");
+        ApiMetrics.Sync("delta");
         var from = cursor ?? 0;
         var take = Math.Clamp(limit ?? DefaultLimit, 1, MaxLimit);
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == userId, ct);
@@ -96,12 +96,12 @@ public static class SyncEndpoints
     }
 
     /// <summary>Full state for first launch or an expired cursor; the returned cursor continues Delta Sync.</summary>
-    private static async Task<ApiResult> SnapshotAsync(HttpContext http, NodusDbContext db, NodeAccess access,
+    private static async Task<ApiResult> SnapshotAsync(HttpContext http, DatabaseContext db, NodeAccess access,
         NodeHistoryLoader histories, NodeDtoFactory dtos, ConnectionService connectionService, AiDraftService aiDrafts,
         FeatureAccess features, CancellationToken ct)
     {
         var userId = http.User.GetUserId();
-        NodusMetrics.Sync("snapshot");
+        ApiMetrics.Sync("snapshot");
         await using var transaction = await db.Database.BeginTransactionAsync(IsolationLevel.RepeatableRead, ct);
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == userId, ct);
         if (user is null) return ApiResult.NotFound("User");

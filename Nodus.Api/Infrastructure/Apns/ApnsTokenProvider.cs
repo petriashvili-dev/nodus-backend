@@ -11,6 +11,9 @@ public sealed class ApnsOptions
 {
     public const string Section = "Apns";
 
+    /// <summary>Explicit opt-in for server pushes; local iOS reminders are independent.</summary>
+    public bool Enabled { get; init; }
+
     /// <summary>Key ID of the APNs auth key (10 characters, shown next to the key in Apple Developer → Keys).</summary>
     public string KeyId { get; init; } = "";
 

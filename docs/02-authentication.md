@@ -54,7 +54,7 @@ stateDiagram-v2
 
 ## Привязка email (тот же UserId)
 
-Используется механика кодов, которая была в проекте для восстановления подписки через Resend, но теперь она привязана к `UserId`.
+Одноразовые коды привязаны к `UserId` и отправляются через собственный SMTP ([14-smtp.md](14-smtp.md)).
 
 ```http
 POST /v1/auth/email/start   { "email": "a@b.c" }          → 202 (всегда одинаковый ответ)
@@ -64,7 +64,7 @@ POST /v1/auth/email/verify  { "email": "a@b.c", "code": "123456" } → проф�
 - Код: 6 цифр, срок `EmailOtp:CodeExpiryMinutes` (10 мин), хранится как HMAC-SHA256 с секретным pepper.
 - Повторная отправка не чаще раза в `ResendCooldownSeconds` (60 с) и не больше `MaxCodesPerHour` (5) на email.
 - Не больше `MaxAttempts` (5) попыток ввода, сравнение за постоянное время.
-- Коды не пишутся в логи. Без `Resend:ApiKey` письмо не отправляется и логируется только тема; тело с кодом — лишь в окружении `Development` для локального входа. В `Production` без ключа приложение не стартует.
+- По умолчанию `ServiceMode:Email=Live`: без `EmailOptions:Smtp:Host` вне Production используется локальный логгер (тело — только в Development); в Production SMTP обязателен. Для проверки без отправки есть `ServiceMode:Email=Mock` и секретный `EmailOtp:MockCode` из 6 цифр. Mock сохраняет обычные ограничения OTP и не пишет код в логи: [режимы сервисов](15-service-modes.md).
 - После успешной проверки у **того же** пользователя ставится `email`, `email_verified_at`, `is_anonymous = false`. Данные никуда не мигрируют.
 - Если email уже привязан к другому аккаунту → `409 email_already_linked`. Аккаунты автоматически не сливаются.
 

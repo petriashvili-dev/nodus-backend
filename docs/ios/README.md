@@ -32,7 +32,7 @@
 
 | | |
 |---|---|
-| Base URL | `https://<host>/v1` |
+| Base URL | Production: `https://nodus.eatee.ru/v1`; локальная разработка: `http://localhost:5258/v1` |
 | Формат | JSON, ключи `snake_case`, enum — строки (`one_time`, `untied`) |
 | Дата | `"2026-10-18"` |
 | Локальное время | `"09:30"` (24 ч, минуты) |

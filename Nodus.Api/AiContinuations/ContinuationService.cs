@@ -48,7 +48,7 @@ public sealed record SuggestionDto(
 
 /// <summary>Called by <see cref="NodeService"/> on every create/edit; never delays the API response.</summary>
 public sealed class ContinuationTrigger(
-    NodusDbContext db,
+    DatabaseContext db,
     UnitOfWork unitOfWork,
     IOptions<ContinuationOptions> options,
     FeatureAccess features,
@@ -91,7 +91,7 @@ public sealed class ContinuationTrigger(
     {
         if (await features.CheckAsync(node.OwnerId, Features.AiContinuations, ct) != FeatureCheck.Allowed) return;
         db.OutboxEvents.Add(OutboxEvent.Create(OutboxEventTypes.AiContinuationRequested,
-            JsonSerializer.Serialize(new ContinuationRequestedPayload(node.Id, hash), NodusJson.Options), time.GetUtcNow()));
+            JsonSerializer.Serialize(new ContinuationRequestedPayload(node.Id, hash), ApiJson.Options), time.GetUtcNow()));
     }
 
     public static void Record(UnitOfWork unitOfWork, NodeSuggestion suggestion) =>
@@ -99,7 +99,7 @@ public sealed class ContinuationTrigger(
             [suggestion.UserId]);
 }
 
-public sealed class SuggestionService(NodusDbContext db, UnitOfWork unitOfWork, NodeService nodes, TimeProvider time)
+public sealed class SuggestionService(DatabaseContext db, UnitOfWork unitOfWork, NodeService nodes, TimeProvider time)
 {
     /// <summary>Records the single display; repeated calls keep the first timestamp.</summary>
     public async Task<ApiResult> MarkShownAsync(Guid userId, Guid id, CancellationToken ct)

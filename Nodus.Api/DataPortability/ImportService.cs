@@ -70,7 +70,7 @@ public sealed record ImportRequestedPayload(Guid JobId);
 /// so importing the same file twice adds nothing the second time.
 /// </summary>
 public sealed class ImportService(
-    NodusDbContext db,
+    DatabaseContext db,
     UnitOfWork unitOfWork,
     NodeService nodes,
     ISelectionResolver<ImportFormat, IImportFormatParser> parsers,
@@ -102,7 +102,7 @@ public sealed class ImportService(
                 return ApiResult.Ok(new { mode = "direct", format = format.ToString(), result });
             }
 
-            if (format.Source == ImportFormat.NodusSource)
+            if (format.Source == ImportFormat.NativeSource)
                 return ApiResult.Problem(StatusCodes.Status400BadRequest, "unsupported_format_version",
                     $"This file was created by a newer version of Nodus (format {format}); update the app to import it.");
         }
@@ -131,7 +131,7 @@ public sealed class ImportService(
 
         var now = time.GetUtcNow();
         job.Status = ImportJobStatus.Completed;
-        job.Result = JsonSerializer.Serialize(result, NodusJson.Options);
+        job.Result = JsonSerializer.Serialize(result, ApiJson.Options);
         job.CompletedAt = now;
         Touch(job, now);
         await unitOfWork.CommitAsync(ct);
@@ -179,7 +179,7 @@ public sealed class ImportService(
             preview?.Candidates.Select(c => new ImportPreviewNode(c.Index, c.Type, c.Input.Title, c.Input.Description,
                 c.Input.Timezone, c.Input.Date, c.Input.Time, c.Input.Recurrence, c.Input.TrackYears)).ToList() ?? [],
             preview?.Issues ?? [],
-            job.Result is null ? null : JsonSerializer.Deserialize<ImportResult>(job.Result, NodusJson.Options));
+            job.Result is null ? null : JsonSerializer.Deserialize<ImportResult>(job.Result, ApiJson.Options));
     }
 
     private async Task<ImportResult> ApplyAsync(Guid userId, ImportParseResult parsed, IReadOnlySet<int>? only,
@@ -252,7 +252,7 @@ public sealed class ImportService(
         };
         db.ImportJobs.Add(job);
         db.OutboxEvents.Add(OutboxEvent.Create(OutboxEventTypes.ImportRequested,
-            JsonSerializer.Serialize(new ImportRequestedPayload(job.Id), NodusJson.Options), now));
+            JsonSerializer.Serialize(new ImportRequestedPayload(job.Id), ApiJson.Options), now));
         Touch(job, now);
         await unitOfWork.CommitAsync(ct);
         return ApiResult.Accepted(new { mode = "ai", job = Dto(job) });

@@ -4,7 +4,7 @@ using System.Diagnostics.Metrics;
 namespace Nodus.Api.Infrastructure.Observability;
 
 /// <summary>Application metrics. Tags carry categories only — never node content, prompts or user ids.</summary>
-public static class NodusMetrics
+public static class ApiMetrics
 {
     public const string MeterName = "Nodus.Api";
 

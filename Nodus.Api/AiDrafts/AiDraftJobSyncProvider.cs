@@ -4,7 +4,7 @@ using Nodus.Api.Sync;
 
 namespace Nodus.Api.AiDrafts;
 
-public sealed class AiDraftJobSyncProvider(NodusDbContext db, AiDraftService drafts) : ISyncEntityProvider
+public sealed class AiDraftJobSyncProvider(DatabaseContext db, AiDraftService drafts) : ISyncEntityProvider
 {
     public SyncEntityType EntityType => SyncEntityType.AiDraftJob;
 

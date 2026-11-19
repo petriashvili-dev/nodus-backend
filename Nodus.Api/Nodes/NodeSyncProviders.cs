@@ -26,7 +26,7 @@ public sealed class NodeSyncProvider(NodeAccess access, NodeHistoryLoader histor
 /// Exact occurrence states referenced by the page (entity id <c>{nodeId}:{key}</c>), loaded by key regardless of age.
 /// States of nodes the recipient cannot see are skipped: the node tombstone covers them.
 /// </summary>
-public sealed class OccurrenceStateSyncProvider(NodusDbContext db, NodeAccess access) : ISyncEntityProvider
+public sealed class OccurrenceStateSyncProvider(DatabaseContext db, NodeAccess access) : ISyncEntityProvider
 {
     public SyncEntityType EntityType => SyncEntityType.OccurrenceState;
 

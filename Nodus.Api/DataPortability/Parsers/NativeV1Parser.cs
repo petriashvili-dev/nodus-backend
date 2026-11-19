@@ -15,9 +15,9 @@ namespace Nodus.Api.DataPortability.Parsers;
 /// </list>
 /// Only a missing title or an unusable value of a required field makes a single node invalid; the rest is imported.
 /// </summary>
-public sealed class NodusV1Parser : IImportFormatParser
+public sealed class NativeV1Parser : IImportFormatParser
 {
-    public ImportFormat Format => new(ImportFormat.NodusSource, 1);
+    public ImportFormat Format => new(ImportFormat.NativeSource, 1);
 
     public ImportParseResult Parse(JsonElement document, ImportDefaults defaults)
     {

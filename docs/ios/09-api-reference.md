@@ -85,11 +85,13 @@ OccurrenceStateDto { node_id, key, state, completed_at, version, updated_at, upd
                      revision, title, date, time, scheduled_at }
 ```
 
+`NodeDto.members` не включает владельца (`owner_id`): пустой массив — личный узел, один или больше участников — совместный. Тот же формат используется в `current` при конфликте версий.
+
 ## Лента и экземпляры
 
 | Метод и путь | Успех | Ограничения |
 |---|---|---|
-| `GET /feed?from&to` | `200 { generated_at, from, to, items: [{ node_type, node_version, occurrence: OccurrenceDto }] }` | ≤ 400 дней; по умолчанию вчера … +60 |
+| `GET /feed?from&to` | `200 { generated_at, from, to, items: [{ node_type, node_version, occurrence: OccurrenceDto }] }` | ≤ 400 дней; по умолчанию вчера … +60. Для серии: один ближайший `tied`, начиная с сегодня, плюс сегодняшние `untied`; будущие `untied` пропускаются |
 | `GET /occurrences?from&to` | `200 { generated_at, from, to, occurrences: [OccurrenceDto] }` | ≤ 120 дней; по умолчанию вчера … +45 |
 
 ## Синхронизация

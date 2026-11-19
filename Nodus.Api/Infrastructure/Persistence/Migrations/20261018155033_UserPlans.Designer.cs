@@ -11,7 +11,7 @@ using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 
 namespace Nodus.Api.Infrastructure.Persistence.Migrations
 {
-    [DbContext(typeof(NodusDbContext))]
+    [DbContext(typeof(DatabaseContext))]
     [Migration("20261018155033_UserPlans")]
     partial class UserPlans
     {

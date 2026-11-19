@@ -62,7 +62,7 @@ public static class AuthEndpoints
     }
 
     private static async Task<ApiResult> CreateAnonymousAsync(
-        NodusDbContext db, ITokenService tokens, TimeProvider time, CancellationToken ct)
+        DatabaseContext db, ITokenService tokens, TimeProvider time, CancellationToken ct)
     {
         var now = time.GetUtcNow();
         var user = new User { Id = Guid.NewGuid(), CreatedAt = now, UpdatedAt = now };
@@ -93,7 +93,7 @@ public static class AuthEndpoints
 
     /// <summary>Attaches a verified email to the same <c>UserId</c>; no data is moved between accounts.</summary>
     private static async Task<ApiResult> VerifyLinkAsync(
-        EmailVerifyRequest request, HttpContext http, NodusDbContext db, IEmailOtpService otp, UnitOfWork unitOfWork,
+        EmailVerifyRequest request, HttpContext http, DatabaseContext db, IEmailOtpService otp, UnitOfWork unitOfWork,
         FeatureAccess access, TimeProvider time, CancellationToken ct)
     {
         if (!EmailAddress.TryNormalize(request.Email, out var email)) return InvalidEmail();
@@ -138,7 +138,7 @@ public static class AuthEndpoints
     /// may have used before is not merged; the client discards it after a successful sign-in.
     /// </summary>
     private static async Task<ApiResult> SignInAsync(
-        EmailVerifyRequest request, NodusDbContext db, IEmailOtpService otp, ITokenService tokens, CancellationToken ct)
+        EmailVerifyRequest request, DatabaseContext db, IEmailOtpService otp, ITokenService tokens, CancellationToken ct)
     {
         if (!EmailAddress.TryNormalize(request.Email, out var email)) return InvalidEmail();
         if (!await otp.VerifyAsync(email, request.Code ?? "", EmailCodePurpose.SignIn, null, ct)) return InvalidCode();
@@ -155,7 +155,7 @@ public static class AuthEndpoints
         return ApiResult.Ok(issued);
     }
 
-    private static async Task<ApiResult> MeAsync(HttpContext http, NodusDbContext db, FeatureAccess access, CancellationToken ct)
+    private static async Task<ApiResult> MeAsync(HttpContext http, DatabaseContext db, FeatureAccess access, CancellationToken ct)
     {
         var userId = http.User.GetUserId();
         var user = await db.Users.AsNoTracking().SingleOrDefaultAsync(u => u.Id == userId, ct);
@@ -163,7 +163,7 @@ public static class AuthEndpoints
     }
 
     /// <summary>The display name is visible to connections, so their feeds receive the change too.</summary>
-    private static async Task<ApiResult> UpdateProfileAsync(UpdateProfileRequest request, HttpContext http, NodusDbContext db,
+    private static async Task<ApiResult> UpdateProfileAsync(UpdateProfileRequest request, HttpContext http, DatabaseContext db,
         UnitOfWork unitOfWork, FeatureAccess access, TimeProvider time, CancellationToken ct)
     {
         var name = string.IsNullOrWhiteSpace(request.DisplayName) ? null : request.DisplayName.Trim();

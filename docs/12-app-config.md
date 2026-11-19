@@ -50,7 +50,7 @@ dotnet run --project Nodus.Api -- config set features.import_enabled false --jso
 dotnet run --project Nodus.Api -- config set support '{"email":"help@nodus.app"}' --json
 dotnet run --project Nodus.Api -- config delete links.faq
 
-docker compose run --rm nodus-api config set links.privacy_policy https://nodus.app/privacy   # на сервере
+docker exec <API_CONTAINER_ID> dotnet Nodus.Api.dll config set links.privacy_policy https://nodus.app/privacy   # на сервере
 ```
 
 | Код выхода | Значение |

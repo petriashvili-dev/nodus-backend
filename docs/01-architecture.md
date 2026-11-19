@@ -4,6 +4,8 @@
 
 Один процесс API (MVP, без HA) содержит всё: HTTP API, SSE, диспетчер outbox и Hangfire server. Состояние — только в PostgreSQL; in-memory — лишь fanout SSE-сигналов.
 
+Имена классов и методов не включают название продукта: composition root — `ApplicationHost`, EF-контекст — `DatabaseContext`, design-time фабрика — `DatabaseContextFactory`, JSON-контракт — `ApiJson`, метрики — `ApiMetrics`, формат импорта — `NativeDocumentV1` / `NativeV1Parser`. Фабрика читает подключение из environment или аргументов EF; встроенной строки подключения нет. Ссылки на контекст в snapshot и designer-файлах миграций обновлены; схема БД от переименования не меняется.
+
 ```mermaid
 flowchart TB
     subgraph Clients["Клиенты"]
@@ -45,7 +47,7 @@ flowchart TB
 
         LLMC["FallbackLlmClient<br/>retry · circuit breaker · deadline"]
         APNSC["ApnsClient + ApnsTokenProvider<br/>ES256 .p8, HTTP/2"]
-        MAIL["IEmailSender (Resend)"]
+        MAIL["IEmailSender (SMTP)"]
         OBS["OpenTelemetry<br/>/metrics :9464 · OTLP"]
     end
 
@@ -55,7 +57,7 @@ flowchart TB
         NEURO["neuroapi.host<br/>(primary LLM)"]
         TW["Timeweb Cloud AI<br/>(secondary LLM)"]
         APPLE["Apple APNs"]
-        RESEND["Resend"]
+        SMTP["SMTP / Postfix"]
         PROM["Prometheus / OTLP collector"]
     end
 
@@ -67,7 +69,7 @@ flowchart TB
     AUTH & NODES & SHARE & AIDR & CONT & PORT & DEV --> UOW
     SYNCR -- "чтение журнала и состояния" --> PG
     UOW -- "COMMIT" --> PG
-    AUTH -- "OTP" --> MAIL --> RESEND
+    AUTH -- "OTP" --> MAIL --> SMTP
 
     PG -- "outbox_events" --> DISP
     DISP -- "sync.changed" --> HUB --> SSEE
@@ -85,7 +87,7 @@ flowchart TB
 
 Как читать схему:
 
-- **Синхронный путь** (сплошные стрелки сверху вниз): запрос → middleware → фильтр идемпотентности → модуль → `UnitOfWork` → одна транзакция PostgreSQL. Ответ клиенту уходит сразу после коммита; LLM, APNs и прочие медленные операции в запросе не выполняются (исключение — email-код через Resend).
+- **Синхронный путь** (сплошные стрелки сверху вниз): запрос → middleware → фильтр идемпотентности → модуль → `UnitOfWork` → одна транзакция PostgreSQL. Ответ клиенту уходит сразу после коммита; LLM, APNs и прочие медленные операции в запросе не выполняются (исключение — email-код через SMTP).
 - **Асинхронный путь**: всё, что должно произойти *после* коммита, записывается в `outbox_events` в той же транзакции. `OutboxDispatcher` забирает события и либо шлёт SSE-сигнал через hub, либо ставит задачу в нужную очередь Hangfire. Задачи сами пишут результат в PostgreSQL через тот же `UnitOfWork`, и цикл повторяется (клиент узнаёт о результате через sync/SSE/push).
 - **Клиент получает данные только через sync** (`GET /v1/sync`); SSE и APNs лишь сообщают, что пора синхронизироваться.
 
@@ -142,12 +144,12 @@ sequenceDiagram
 | `Connections/`, `Sharing/` | доверенные связи и совместные узлы |
 | `AiDrafts/`, `AiContinuations/` | AI-функции |
 | `DataPortability/` | экспорт и импорт, парсеры форматов по версиям |
-| `Infrastructure/` | Persistence, Outbox, Hangfire, Llm, Sse, Apns, Resend, Observability |
-| `NodusApplication.cs` | composition root: регистрация сервисов, middleware, маршруты |
+| `Infrastructure/` | Persistence, Outbox, Hangfire, Llm, Sse, Apns, Email, Observability |
+| `ApplicationHost.cs` | composition root: регистрация сервисов, middleware, маршруты |
 
 ## Жизненный цикл запроса
 
-Порядок middleware (`NodusApplication.Build`):
+Порядок middleware (`ApplicationHost.Build`):
 
 1. `ForwardedHeaders` — реальный IP и схема за reverse proxy.
 2. Observability — `X-Request-Id` (берётся у клиента или генерируется), scope логов с `RequestId` и `IdempotencyKey`.
@@ -229,7 +231,7 @@ sequenceDiagram
 
 ## Хранение данных
 
-PostgreSQL, EF Core, имена в `snake_case`. Все моменты времени хранятся в UTC (`timestamptz`); любой пришедший offset нормализуется конвертером в `NodusDbContext`. Локальные даты/время — отдельно (`date`, `time`) вместе с IANA-зоной.
+PostgreSQL, EF Core, имена в `snake_case`. Все моменты времени хранятся в UTC (`timestamptz`); любой пришедший offset нормализуется конвертером в `DatabaseContext`. Локальные даты/время — отдельно (`date`, `time`) вместе с IANA-зоной.
 
 Основные таблицы: `users`, `refresh_tokens`, `email_verification_codes`, `nodes`, `node_revisions`, `node_occurrence_states`, `sync_changes`, `client_operations`, `outbox_events`, `devices`, `connections`, `connection_invites`, `shared_node_members`, `ai_draft_jobs`, `ai_node_drafts`, `node_suggestions`, `continuation_cache`.
 

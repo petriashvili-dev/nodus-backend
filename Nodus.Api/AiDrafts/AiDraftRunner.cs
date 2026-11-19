@@ -18,7 +18,7 @@ public sealed class AiDraftRequestedOutboxHandler(IBackgroundJobs jobs) : IOutbo
 
     public Task HandleAsync(OutboxEvent outboxEvent, CancellationToken ct)
     {
-        var payload = JsonSerializer.Deserialize<AiDraftRequestedPayload>(outboxEvent.Payload, NodusJson.Options)!;
+        var payload = JsonSerializer.Deserialize<AiDraftRequestedPayload>(outboxEvent.Payload, ApiJson.Options)!;
         return jobs.EnqueueAsync<AiDraftRunner>(r => r.RunAsync(payload.JobId, CancellationToken.None), HangfireQueues.AiDrafts);
     }
 }
@@ -28,7 +28,7 @@ public sealed class AiDraftRequestedOutboxHandler(IBackgroundJobs jobs) : IOutbo
 /// drafts instead of adding to them, so retries and provider fallback never duplicate drafts.
 /// </summary>
 public sealed class AiDraftRunner(
-    NodusDbContext db,
+    DatabaseContext db,
     UnitOfWork unitOfWork,
     AiDraftService drafts,
     ILlmClient llm,
@@ -69,7 +69,7 @@ public sealed class AiDraftRunner(
         await Db.AiNodeDrafts.Where(d => d.JobId == job.Id).ExecuteDeleteAsync(ct);
         Db.AiNodeDrafts.AddRange(parsed.Select(d => new AiNodeDraft
         {
-            JobId = job.Id, Index = d.Index, Payload = JsonSerializer.Serialize(d, NodusJson.Options)
+            JobId = job.Id, Index = d.Index, Payload = JsonSerializer.Serialize(d, ApiJson.Options)
         }));
         job.Status = AiDraftJobStatus.Ready;
         job.ReadyAt = time.GetUtcNow();

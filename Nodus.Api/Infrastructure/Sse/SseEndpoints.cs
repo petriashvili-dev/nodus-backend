@@ -31,7 +31,7 @@ public static class SseEndpoints
     /// signals immediately if the client is behind. Clients must still run Delta Sync after every reconnect:
     /// SSE is not a delivery guarantee.
     /// </summary>
-    private static async Task StreamAsync(HttpContext http, NodusDbContext db, IRealtimeHub hub, IOptions<SseOptions> options,
+    private static async Task StreamAsync(HttpContext http, DatabaseContext db, IRealtimeHub hub, IOptions<SseOptions> options,
         IHostApplicationLifetime lifetime, CancellationToken requestAborted)
     {
         var userId = http.User.GetUserId();

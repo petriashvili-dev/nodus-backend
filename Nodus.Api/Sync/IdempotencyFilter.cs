@@ -29,7 +29,7 @@ public sealed class IdempotencyFilter : IEndpointFilter
                 $"Header {HeaderName} (1–{Limits.IdempotencyKeyLength} characters) is required for mutations.");
 
         var services = http.RequestServices;
-        var db = services.GetRequiredService<NodusDbContext>();
+        var db = services.GetRequiredService<DatabaseContext>();
         var unitOfWork = services.GetRequiredService<UnitOfWork>();
         var now = services.GetRequiredService<TimeProvider>().GetUtcNow();
         var userId = http.User.GetUserId();
@@ -66,7 +66,7 @@ public sealed class IdempotencyFilter : IEndpointFilter
             db.ClientOperations.Add(new ClientOperation
             {
                 UserId = userId, IdempotencyKey = key, RequestHash = requestHash, StatusCode = result.StatusCode,
-                ResponseBody = result.Value is null ? null : JsonSerializer.Serialize(result.Value, NodusJson.Options),
+                ResponseBody = result.Value is null ? null : JsonSerializer.Serialize(result.Value, ApiJson.Options),
                 CreatedAt = now
             });
 
@@ -96,7 +96,7 @@ public sealed class IdempotencyFilter : IEndpointFilter
         return result;
     }
 
-    private static async Task<ApiResult?> ReplayAsync(NodusDbContext db, HttpContext http, Guid userId, string key, string requestHash)
+    private static async Task<ApiResult?> ReplayAsync(DatabaseContext db, HttpContext http, Guid userId, string key, string requestHash)
     {
         var existing = await db.ClientOperations.AsNoTracking()
             .SingleOrDefaultAsync(o => o.UserId == userId && o.IdempotencyKey == key, http.RequestAborted);
@@ -106,7 +106,7 @@ public sealed class IdempotencyFilter : IEndpointFilter
                 "This Idempotency-Key was already used for a different request.");
 
         http.Response.Headers[ReplayedHeaderName] = "true";
-        NodusMetrics.IdempotentReplay();
+        ApiMetrics.IdempotentReplay();
         return ApiResult.Stored(existing.StatusCode, existing.ResponseBody);
     }
 

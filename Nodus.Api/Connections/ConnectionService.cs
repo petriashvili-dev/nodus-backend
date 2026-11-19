@@ -39,7 +39,7 @@ public sealed record CreatedInviteDto(Guid Id, string Token, string Code, string
 public sealed record AcceptInviteRequest(string? Code);
 
 public sealed class ConnectionService(
-    NodusDbContext db,
+    DatabaseContext db,
     UnitOfWork unitOfWork,
     SharingService sharing,
     PushNotifier push,

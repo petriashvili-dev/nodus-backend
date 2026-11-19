@@ -4,7 +4,8 @@ using System.Text;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Nodus.Api.Infrastructure.Persistence;
-using Nodus.Api.Infrastructure.Resend;
+using Nodus.Api.Infrastructure.Email;
+using Nodus.Api.Infrastructure.ServiceModes;
 
 namespace Nodus.Api.Authentication;
 
@@ -21,13 +22,14 @@ public interface IEmailOtpService
 }
 
 /// <summary>
-/// The Resend verification mechanics that existed for subscription restore (hashed six-digit codes with a pepper,
-/// resend cooldown, hourly cap, attempt limit, constant-time comparison), now bound to the account <c>UserId</c>.
+/// Email verification uses hashed six-digit codes with a pepper,
+/// resend cooldown, hourly cap, attempt limit and constant-time comparison, bound to the account <c>UserId</c>.
 /// </summary>
 public sealed class EmailOtpService(
-    NodusDbContext db,
+    DatabaseContext db,
     IEmailSender sender,
     IOptions<EmailOtpOptions> options,
+    IOptions<ServiceModeOptions> serviceMode,
     TimeProvider time,
     ILogger<EmailOtpService> logger) : IEmailOtpService
 {
@@ -43,18 +45,20 @@ public sealed class EmailOtpService(
         if (await recent.AnyAsync(c => c.CreatedAt > now.AddSeconds(-_options.ResendCooldownSeconds), ct)) return;
         if (await recent.CountAsync(c => c.CreatedAt > now.AddHours(-1), ct) >= _options.MaxCodesPerHour) return;
 
-        // Review codes go through the same storage, expiry and attempt limits; only generation and delivery differ.
+        // Fixed codes still require issuance and pass the same expiry and attempt checks.
         var review = _options.IsReviewEmail(email);
-        var code = review ? _options.ReviewCode : RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+        var mock = serviceMode.Value.Email == EmailServiceMode.Mock;
+        var code = review ? _options.ReviewCode : mock ? _options.MockCode
+            : RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
         db.EmailVerificationCodes.Add(new EmailVerificationCode
         {
             Id = Guid.NewGuid(), Email = email, Purpose = purpose, UserId = purpose == EmailCodePurpose.Link ? userId : null,
             CodeHash = Hash(purpose, email, code), CreatedAt = now, ExpiresAt = now.AddMinutes(_options.CodeExpiryMinutes)
         });
 
-        if (review)
+        if (review || mock)
         {
-            logger.LogWarning("Fixed App Review code issued for {Purpose}", purpose);
+            logger.LogWarning("Fixed {Mode} email code issued for {Purpose}", review ? "App Review" : "Mock", purpose);
             await db.SaveChangesAsync(ct);
             return;
         }

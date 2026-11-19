@@ -15,7 +15,7 @@ using Nodus.Api.Devices;
 using Nodus.Api.Infrastructure.Apns;
 using Nodus.Api.Infrastructure.Llm;
 using Nodus.Api.Infrastructure.Persistence;
-using Nodus.Api.Infrastructure.Resend;
+using Nodus.Api.Infrastructure.Email;
 using Nodus.Api.Plans;
 using Npgsql;
 
@@ -41,6 +41,7 @@ public sealed class TestApp : IAsyncLifetime
     public FakeLlmClient Llm { get; } = new();
     public IServiceProvider Services => _app!.Services;
     public Dictionary<string, string?> Settings { get; } = [];
+    public string EnvironmentName { get; init; } = "Testing";
 
     /// <summary>Extra registrations for a hand-made instance (set before <see cref="InitializeAsync"/>).</summary>
     public Action<IServiceCollection>? ExtraServices { get; init; }
@@ -54,21 +55,25 @@ public sealed class TestApp : IAsyncLifetime
         }
 
         var connectionString = new NpgsqlConnectionStringBuilder(ServerConnection) { Database = _database }.ToString();
-        _app = NodusApplication.Build([], builder =>
+        _app = ApplicationHost.Build([], builder =>
         {
-            builder.Environment.EnvironmentName = "Testing";
+            builder.Environment.EnvironmentName = EnvironmentName;
             builder.WebHost.UseTestServer();
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ConnectionStrings:Postgres"] = connectionString,
                 ["Jwt:SigningKey"] = "test-signing-key-that-is-long-enough-0123456789",
                 ["EmailOtp:HashPepper"] = "test-pepper-0123456789",
+                ["ServiceMode:Email"] = "Live",
+                ["EmailOtp:MockCode"] = "",
+                ["Apns:Enabled"] = "true",
                 ["Hangfire:Enabled"] = "false",
                 ["Outbox:RunInBackground"] = "false",
                 ["RateLimits:AuthPerMinute"] = "1000",
                 ["RateLimits:OtpPerMinute"] = "1000",
                 ["RateLimits:AiPerMinute"] = "1000"
-            }.Concat(Settings));
+            });
+            builder.Configuration.AddInMemoryCollection(Settings);
             builder.Services.AddSingleton<TimeProvider>(Time);
             builder.Services.AddSingleton<IEmailSender>(Emails);
         }, services =>
@@ -79,7 +84,7 @@ public sealed class TestApp : IAsyncLifetime
         });
 
         await using (var scope = _app.Services.CreateAsyncScope())
-            await scope.ServiceProvider.GetRequiredService<NodusDbContext>().Database.MigrateAsync();
+            await scope.ServiceProvider.GetRequiredService<DatabaseContext>().Database.MigrateAsync();
         await _app.StartAsync();
     }
 
@@ -132,10 +137,10 @@ public sealed class TestApp : IAsyncLifetime
         return await scope.ServiceProvider.GetRequiredService<PlanService>().SetAsync(userId, null, plan, expiresAt, CancellationToken.None);
     }
 
-    public async Task<T> WithDbAsync<T>(Func<NodusDbContext, Task<T>> action)
+    public async Task<T> WithDbAsync<T>(Func<DatabaseContext, Task<T>> action)
     {
         await using var scope = _app!.Services.CreateAsyncScope();
-        return await action(scope.ServiceProvider.GetRequiredService<NodusDbContext>());
+        return await action(scope.ServiceProvider.GetRequiredService<DatabaseContext>());
     }
 }
 
@@ -212,7 +217,7 @@ public static class HttpTestExtensions
         object? body, string? idempotencyKey = null)
     {
         using var request = new HttpRequestMessage(method, url);
-        if (body is not null) request.Content = JsonContent.Create(body, options: NodusJson.Options);
+        if (body is not null) request.Content = JsonContent.Create(body, options: ApiJson.Options);
         if (idempotencyKey is not null) request.Headers.Add("Idempotency-Key", idempotencyKey);
         return await client.SendAsync(request);
     }

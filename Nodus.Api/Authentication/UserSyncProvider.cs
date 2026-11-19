@@ -6,7 +6,7 @@ using Nodus.Api.Sync;
 namespace Nodus.Api.Authentication;
 
 /// <summary>The recipient's own profile; other users never appear as <c>user</c> entities.</summary>
-public sealed class UserSyncProvider(NodusDbContext db, FeatureAccess access) : ISyncEntityProvider
+public sealed class UserSyncProvider(DatabaseContext db, FeatureAccess access) : ISyncEntityProvider
 {
     public SyncEntityType EntityType => SyncEntityType.User;
 

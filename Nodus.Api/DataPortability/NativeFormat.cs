@@ -7,12 +7,12 @@ namespace Nodus.Api.DataPortability;
 /// <summary>Identity of a file format: a parser is selected by exact <c>(source, version)</c>.</summary>
 public readonly record struct ImportFormat(string Source, int Version)
 {
-    public const string NodusSource = "nodus";
+    public const string NativeSource = "nodus";
 
     /// <summary>Version written by export and targeted by AI conversion of foreign files.</summary>
     public const int CurrentVersion = 1;
 
-    public static readonly ImportFormat Current = new(NodusSource, CurrentVersion);
+    public static readonly ImportFormat Current = new(NativeSource, CurrentVersion);
 
     public override string ToString() => $"{Source}/v{Version}";
 }
@@ -38,17 +38,17 @@ public interface IImportFormatParser
     ImportParseResult Parse(JsonElement document, ImportDefaults defaults);
 }
 
-/// <summary>The exported document, version 1. Written by export; read by <c>NodusV1Parser</c>.</summary>
-public sealed record NodusDocumentV1(
+/// <summary>The exported document, version 1. Written by export; read by <c>NativeV1Parser</c>.</summary>
+public sealed record NativeDocumentV1(
     string Source,
     int Version,
     DateTimeOffset ExportedAt,
     string? Timezone,
-    IReadOnlyList<NodusNodeV1> Nodes);
+    IReadOnlyList<NativeNodeV1> Nodes);
 
 /// <param name="Date">One-time: scheduled date (optional). Anniversary: original date.</param>
 /// <param name="Recurrence">Recurring only.</param>
-public sealed record NodusNodeV1(
+public sealed record NativeNodeV1(
     NodeType Type,
     string Title,
     string? Description,

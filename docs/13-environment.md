@@ -4,13 +4,18 @@
 
 Новая настройка добавляется сюда, в `appsettings.json` (без секретов) и, если её нужно задавать на сервере, — в `.env.example`.
 
-## Развёртывание (docker compose)
+Для production на сервере Eatee подготовлен [полный набор значений и TODO](17-production-environment.md). Шаблон `.env.example` выбирает Email=Live и SMTP Eatee. Секреты нужно заменить. Порты, Production, логи ASP.NET/EF и запрет автомиграций зафиксированы в Stack.
+
+`DatabaseContextFactory` не содержит строки подключения. Для EF-команд, которым нужна БД, задать `ConnectionStrings__Postgres` в окружении либо передать `-- --ConnectionStrings:Postgres="..."`. Генерация модели работает без подключения; при запуске приложения пустое подключение отклоняется. В `appsettings.json` сохранено пустое значение.
+
+## Развёртывание (Swarm Stack)
+
+Домен `nodus.eatee.ru` и образ `ghcr.io/petriashvili-dev/nodus-backend:latest` зафиксированы в Stack. Остальные настройки приложения загружаются из Environment Dokploy через `env_file: .env`. Сертификат обслуживает существующий Traefik сервера Eatee: [18-domain-and-tls.md](18-domain-and-tls.md).
 
 | Переменная | Описание |
 |---|---|
-| `NODUS_DOMAIN` | домен API для маршрутов Traefik |
-| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | база и пользователь контейнера PostgreSQL; из них compose собирает строку подключения |
-| `ASPNETCORE_ENVIRONMENT` (`Production`) | окружение: `Production` требует ключ Resend, тела писем с кодами логируются только в `Development` |
+| `POSTGRES_DB`, `POSTGRES_USER`, `POSTGRES_PASSWORD` | база и пользователь PostgreSQL; в Stack база и пользователь закреплены как nodus; пароль в ConnectionStrings__Postgres задать вручную таким же |
+| `ASPNETCORE_ENVIRONMENT` (`Production`) | окружение: `Production` требует SMTP host в режиме Email=Live; тела писем с кодами логируются только локальным логгером в Development, не в Mock |
 | `ASPNETCORE_URLS` (`http://+:8080`) | порты Kestrel; в compose добавлен `9464` для `/metrics` |
 | `APP_COMMIT`, `APP_BUILD_TIME` | коммит и время сборки для `/version`; задаются при сборке образа (`GIT_SHA`, `BUILD_TIME`) |
 
@@ -23,13 +28,15 @@
 | `ConnectionStrings__Postgres` | строка подключения PostgreSQL |
 | `Jwt__SigningKey` | ключ подписи access-токенов, ≥ 32 байт (`openssl rand -base64 48`) |
 | `EmailOtp__HashPepper` | секрет для хешей кодов (email, приглашения) и ключей AI-кеша, ≥ 16 символов. **Не менять** на работающей системе: выданные коды и кеш станут недействительными |
-| `Resend__ApiKey` | ключ Resend. Обязателен в `Production`; в других окружениях без него письма не отправляются, логируется только тема (тело с кодом — лишь в `Development`) |
+| `EmailOptions__Smtp__Host` | SMTP host. Обязателен в Production при ServiceMode__Email=Live; в Mock почта не отправляется и host не нужен |
 
 ## База данных и сеть
 
 | Переменная | Описание |
 |---|---|
 | `Database__MigrateOnStartup` (`false`) | применять миграции при старте — только для локальной разработки; на сервере — команда `migrate` |
+| `Database__StartupTimeoutSeconds` (180) | общий таймаут ожидания БД/миграций в командах Docker `serve`, `migrate`, `wait-for-*`; 1–1800 секунд |
+| `Database__StartupRetrySeconds` (2) | интервал повторной проверки БД/миграций; 1–30 секунд |
 | `ReverseProxy__TrustForwardedHeaders` (`false`) | доверять `X-Forwarded-*` от reverse proxy |
 
 ## JWT
@@ -52,20 +59,30 @@
 | `EmailOtp__ReviewEmails__0…` (—) | адреса демо-аккаунтов App Review — **только на время ревью**, см. [02](02-authentication.md#демо-аккаунт-для-app-review) |
 | `EmailOtp__ReviewCode` (—) | фиксированный 6-значный код для этих адресов, секрет |
 
-## Resend
+## SMTP
+
+Режим отправки — [15-service-modes.md](15-service-modes.md): `ServiceMode__Email=Live` по умолчанию; `Mock` использует обязательный `EmailOtp__MockCode` из 6 ASCII-цифр и не вызывает SMTP. Обе настройки серверные, применяются после перезапуска и не публикуются в app-config. MockCode по умолчанию пуст и задаётся через secrets/Environment.
+
+Транспорт MailKit и закрытая сеть Postfix — [14-smtp.md](14-smtp.md). Старые `Resend__*` и HTTP-прокси не используются.
 
 | Переменная | Описание |
 |---|---|
-| `Resend__From` | отправитель, например `Nodus <no-reply@nodus.app>` |
-| `Resend__Proxy__Url` (—) | прокси только для Resend: `http://`, `https://` или `socks5://`, без логина в URL; пусто — напрямую, неверный URL — приложение не стартует |
-| `Resend__Proxy__Username`, `Resend__Proxy__Password` (—) | учётные данные прокси |
+| `EmailOptions__FromAddress` (`no-reply@nodus.app`) | адрес отправителя и envelope MAIL FROM, без display name; домен должен быть разрешён почтовым сервером |
+| `EmailOptions__FromName` (`Nodus`) | имя отправителя, без переводов строки |
+| `EmailOptions__Smtp__Host` (пусто) | достижимый с сервера Nodus IP/DNS SMTP, без схемы/порта. Postfix находится на отдельном сервере Eatee; его Swarm-имя `eatee-infrastructure-wajrxt_mail` доступно только внутри сети Eatee |
+| `EmailOptions__Smtp__Port` (25) | порт SMTP, 1–65535 |
+| `EmailOptions__Smtp__Security` (`None`) | `None` для закрытой сети; `StartTls` — обязательный STARTTLS; `SslOnConnect` — TLS с подключения |
+| `EmailOptions__Smtp__Authentication` (`false`) | выполнять SMTP AUTH |
+| `EmailOptions__Smtp__Username`, `EmailOptions__Smtp__Password` (пусто) | обязательны при Authentication=true; пароль — секрет |
+| `EmailOptions__Smtp__TimeoutSeconds` (15) | таймаут всей отправки, 1–300 секунд |
 
 ## APNs
 
-Без `KeyId`, `TeamId`, `BundleId` и `PrivateKey` push не отправляются.
+Серверные push по умолчанию выключены: `Apns__Enabled=false`. Включать после настройки Apple, пересоздав backend-контейнер. Локальные напоминания iOS и SSE/sync от выключателя не зависят. Без `KeyId`, `TeamId`, `BundleId` и `PrivateKey` HTTP-запросы к Apple также не выполняются.
 
 | Переменная | Описание |
 |---|---|
+| `Apns__Enabled` (`false`) | выключатель всего конвейера server push: без новых push-событий outbox, постановки заданий, доставки и запросов к Apple; старые события/задания при обработке в выключенном режиме завершаются без отправки и не копятся для последующего включения |
 | `Apns__KeyId` | Key ID ключа `.p8` (Apple Developer → Keys) |
 | `Apns__TeamId` | Team ID (Membership) |
 | `Apns__BundleId` | bundle id приложения (`apns-topic`) |

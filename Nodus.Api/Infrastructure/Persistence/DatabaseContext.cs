@@ -1,7 +1,6 @@
 using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.ChangeTracking;
-using Microsoft.EntityFrameworkCore.Design;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Nodus.Api.AppConfig;
 using Nodus.Api.AiContinuations;
@@ -20,7 +19,7 @@ using Nodus.Api.Sync;
 
 namespace Nodus.Api.Infrastructure.Persistence;
 
-public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : DbContext(options)
+public sealed class DatabaseContext(DbContextOptions<DatabaseContext> options) : DbContext(options)
 {
     public DbSet<User> Users => Set<User>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
@@ -267,30 +266,16 @@ public sealed class NodusDbContext(DbContextOptions<NodusDbContext> options) : D
     }
 
     private static readonly ValueConverter<RecurrenceRule?, string?> RuleConverter = new(
-        v => v == null ? null : JsonSerializer.Serialize(v, NodusJson.Options),
-        v => v == null ? null : JsonSerializer.Deserialize<RecurrenceRule>(v, NodusJson.Options));
+        v => v == null ? null : JsonSerializer.Serialize(v, ApiJson.Options),
+        v => v == null ? null : JsonSerializer.Deserialize<RecurrenceRule>(v, ApiJson.Options));
 
     private static readonly ValueConverter<RecurrenceRule, string> RevisionRuleConverter = new(
-        v => JsonSerializer.Serialize(v, NodusJson.Options),
-        v => JsonSerializer.Deserialize<RecurrenceRule>(v, NodusJson.Options)!);
+        v => JsonSerializer.Serialize(v, ApiJson.Options),
+        v => JsonSerializer.Deserialize<RecurrenceRule>(v, ApiJson.Options)!);
 
     private static readonly ValueComparer<RecurrenceRule?> NullableRuleComparer = new(
         (a, b) => Equals(a, b), v => v == null ? 0 : v.GetHashCode(), v => v);
 
     private static readonly ValueComparer<RecurrenceRule> RuleComparer = new(
         (a, b) => Equals(a, b), v => v.GetHashCode(), v => v);
-}
-
-/// <summary>Used by <c>dotnet ef</c>; the connection string is only needed to pick the provider.</summary>
-public sealed class NodusDbContextFactory : IDesignTimeDbContextFactory<NodusDbContext>
-{
-    public NodusDbContext CreateDbContext(string[] args)
-    {
-        var builder = new DbContextOptionsBuilder<NodusDbContext>();
-        Configure(builder, "Host=localhost;Port=5432;Database=nodus;Username=nodus;Password=nodus");
-        return new NodusDbContext(builder.Options);
-    }
-
-    public static void Configure(DbContextOptionsBuilder builder, string connectionString) =>
-        builder.UseNpgsql(connectionString).UseSnakeCaseNamingConvention();
 }

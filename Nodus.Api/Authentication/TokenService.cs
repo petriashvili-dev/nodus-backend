@@ -31,7 +31,7 @@ public interface ITokenService
 }
 
 public sealed class TokenService(
-    NodusDbContext db,
+    DatabaseContext db,
     IOptions<JwtOptions> options,
     TimeProvider time,
     ILogger<TokenService> logger) : ITokenService

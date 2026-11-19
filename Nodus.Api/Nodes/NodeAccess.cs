@@ -8,7 +8,7 @@ namespace Nodus.Api.Nodes;
 /// The single place that decides who may see and change a node and who receives its sync changes.
 /// Every node endpoint and the sync feed go through it.
 /// </summary>
-public sealed class NodeAccess(NodusDbContext db)
+public sealed class NodeAccess(DatabaseContext db)
 {
     /// <summary>
     /// Nodes the user owns or is a member of, including soft-deleted ones (callers filter as needed).
@@ -41,7 +41,7 @@ public sealed class NodeAccess(NodusDbContext db)
 /// <c>statesFrom</c> on are loaded — plus every <c>once</c> and undated state. Future states are always loaded
 /// (they are few: occurrences untied in advance), so "next occurrence" lookups stay correct.
 /// </summary>
-public sealed class NodeHistoryLoader(NodusDbContext db, TimeProvider time)
+public sealed class NodeHistoryLoader(DatabaseContext db, TimeProvider time)
 {
     /// <summary>
     /// Margin for "current" views (DTO horizon, feed): they start yesterday in the node's zone, and zones differ from

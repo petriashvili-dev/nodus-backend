@@ -27,10 +27,10 @@ public interface IAiJob
 /// </list>
 /// Outcomes are counted in <c>nodus.ai.jobs</c>.
 /// </summary>
-public abstract class AiJobRunner<TJob, TOutput>(NodusDbContext db, UnitOfWork unitOfWork, ILlmClient llm, ILogger logger)
+public abstract class AiJobRunner<TJob, TOutput>(DatabaseContext db, UnitOfWork unitOfWork, ILlmClient llm, ILogger logger)
     where TJob : class, IAiJob
 {
-    protected NodusDbContext Db { get; } = db;
+    protected DatabaseContext Db { get; } = db;
 
     /// <summary>Metrics tag and log prefix, e.g. <c>drafts</c>.</summary>
     protected abstract string Kind { get; }
@@ -82,7 +82,7 @@ public abstract class AiJobRunner<TJob, TOutput>(NodusDbContext db, UnitOfWork u
         catch (LlmException e) when (e.IsTransient && job.Attempts < MaxAttempts)
         {
             logger.LogWarning("AI job {Kind} {JobId} attempt {Attempt} failed: {Category}", Kind, job.Id, job.Attempts, e.Category);
-            NodusMetrics.AiJob(Kind, "retry");
+            ApiMetrics.AiJob(Kind, "retry");
             job.LastError = e.Category.ToString();
             await Db.SaveChangesAsync(ct);
             throw; // retried by Hangfire
@@ -101,7 +101,7 @@ public abstract class AiJobRunner<TJob, TOutput>(NodusDbContext db, UnitOfWork u
             .SingleAsync(ct);
         if (!IsProcessing(current))
         {
-            NodusMetrics.AiJob(Kind, "discarded"); // cancelled while the model was running
+            ApiMetrics.AiJob(Kind, "discarded"); // cancelled while the model was running
             return;
         }
 
@@ -110,14 +110,14 @@ public abstract class AiJobRunner<TJob, TOutput>(NodusDbContext db, UnitOfWork u
         await unitOfWork.CommitAsync(ct);
         await transaction.CommitAsync(ct);
         unitOfWork.AfterCommit();
-        NodusMetrics.AiJob(Kind, error ?? "ready");
+        ApiMetrics.AiJob(Kind, error ?? "ready");
     }
 
     private async Task FailAndCommitAsync(TJob job, string error, CancellationToken ct)
     {
         Fail(job, error);
         await unitOfWork.CommitAsync(ct);
-        NodusMetrics.AiJob(Kind, error);
+        ApiMetrics.AiJob(Kind, error);
     }
 
     protected static string ErrorCode(LlmErrorCategory category) => category switch

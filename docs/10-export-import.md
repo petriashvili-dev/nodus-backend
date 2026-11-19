@@ -151,7 +151,7 @@ public interface IImportFormatParser
 
 ```csharp
 services.AddSelectionResolver<IImportFormatParser, ImportFormat, ImportFormat>(
-    parser => parser.Format, (key, input) => key == input, typeof(NodusApplication).Assembly);
+    parser => parser.Format, (key, input) => key == input, typeof(ApplicationHost).Assembly);
 ```
 
 ### Как выпустить версию 2
@@ -159,6 +159,6 @@ services.AddSelectionResolver<IImportFormatParser, ImportFormat, ImportFormat>(
 1. Добавить модель `NodusDocumentV2` и перевести экспорт на неё.
 2. Написать `NodusV2Parser : IImportFormatParser` с `Format = ("nodus", 2)` — регистрировать вручную не нужно.
 3. Поднять `ImportFormat.CurrentVersion` до 2 (по нему работают экспорт и AI-конвертация) и обновить промпт и схему в `ImportRunner`.
-4. **`NodusV1Parser` не удалять и не менять**: файлы, выгруженные старыми версиями, должны импортироваться всегда.
+4. **`NativeV1Parser` не удалять и не менять**: файлы, выгруженные старыми версиями, должны импортироваться всегда.
 
 Аналогично можно добавить точный парсер для известного чужого формата (например, `("todoist", 1)`), и такие файлы будут импортироваться без AI.

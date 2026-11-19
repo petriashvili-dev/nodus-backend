@@ -124,8 +124,8 @@ public sealed class FallbackLlmClient : ILlmClient
 
     private void Log(LlmRequest request, LlmProviderOptions o, LlmErrorCategory? error, TimeSpan latency, LlmResult? result)
     {
-        NodusMetrics.LlmAttempt(o.Name, request.Purpose, error?.ToString() ?? "success", latency);
-        if (result is not null) NodusMetrics.LlmUsage(o.Name, result.PromptTokens, result.CompletionTokens, result.EstimatedCost);
+        ApiMetrics.LlmAttempt(o.Name, request.Purpose, error?.ToString() ?? "success", latency);
+        if (result is not null) ApiMetrics.LlmUsage(o.Name, result.PromptTokens, result.CompletionTokens, result.EstimatedCost);
 
         if (error is null)
             _logger.LogInformation(
@@ -145,7 +145,7 @@ public static class LlmSetup
 {
     public const string HttpClientName = "llm";
 
-    public static IServiceCollection AddNodusLlm(this IServiceCollection services)
+    public static IServiceCollection AddLlmServices(this IServiceCollection services)
     {
         services.AddOptions<LlmOptions>().BindConfiguration(LlmOptions.Section);
         // Per-attempt timeouts are enforced by the provider; the HttpClient itself must not cut them short.
