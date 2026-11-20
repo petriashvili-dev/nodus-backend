@@ -11,7 +11,7 @@
 | Функция | Ключ | Как запускается | Код |
 |---|---|---|---|
 | Голосовой разбор в черновики | `ai_drafts` | `POST /v1/ai/node-drafts` | `AiDrafts/` |
-| «Продолжение нити» | `ai_continuations` | неявно: создание/смысловая правка одноразового узла → outbox `ai.continuation.requested` | `AiContinuations/` |
+| «Продолжение нити» | `ai_continuations` | неявно: создание/смысловая правка одноразового узла → outbox `ai_continuation_requested` | `AiContinuations/` |
 | AI-импорт чужого файла | `ai_import` | `POST /v1/me/import` с файлом не формата Nodus | `DataPortability/ImportService.cs` (`QueueAiImportAsync`) |
 
 Сейчас есть только глобальный `AiContinuations:Enabled` и суточные лимиты (`Ai:MaxJobsPerDay`, `AiContinuations:MaxLlmCallsPerUserPerDay`, `Import:MaxAiImportsPerDay`); выключить функцию для конкретного пользователя нельзя.

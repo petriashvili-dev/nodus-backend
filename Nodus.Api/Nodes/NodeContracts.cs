@@ -35,6 +35,9 @@ public sealed record CreateNodeRequest : NodeTemplateInput
 public sealed record UpdateNodeRequest : NodeTemplateInput
 {
     public long? ExpectedVersion { get; init; }
+
+    /// <summary>Explicit series retie: replaces this active occurrence instead of keeping it as past history.</summary>
+    public string? ReplacesOccurrenceKey { get; init; }
 }
 
 public sealed record BatchCreateNodesRequest(IReadOnlyList<CreateNodeRequest>? Nodes);

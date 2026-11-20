@@ -83,7 +83,7 @@ public abstract class AiJobRunner<TJob, TOutput>(DatabaseContext db, UnitOfWork 
         {
             logger.LogWarning("AI job {Kind} {JobId} attempt {Attempt} failed: {Category}", Kind, job.Id, job.Attempts, e.Category);
             ApiMetrics.AiJob(Kind, "retry");
-            job.LastError = e.Category.ToString();
+            job.LastError = EnumStorageKey.Format(e.Category);
             await Db.SaveChangesAsync(ct);
             throw; // retried by Hangfire
         }

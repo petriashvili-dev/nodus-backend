@@ -3,19 +3,19 @@ namespace Nodus.Api.Infrastructure.Outbox;
 public static class OutboxEventTypes
 {
     /// <summary>New sync revisions for recipients; fans out as SSE invalidation.</summary>
-    public const string SyncChanged = "sync.changed";
+    public const string SyncChanged = "sync_changed";
 
     /// <summary>A committed push request; enqueued as a Hangfire job on the notifications queue.</summary>
-    public const string PushRequested = "push.requested";
+    public const string PushRequested = "push_requested";
 
     /// <summary>A committed AI draft job; enqueued on the ai-drafts queue.</summary>
-    public const string AiDraftRequested = "ai.draft.requested";
+    public const string AiDraftRequested = "ai_draft_requested";
 
     /// <summary>A one-time node's content changed; schedules the debounced continuation pipeline.</summary>
-    public const string AiContinuationRequested = "ai.continuation.requested";
+    public const string AiContinuationRequested = "ai_continuation_requested";
 
     /// <summary>A foreign file to convert with AI; enqueued on the imports queue.</summary>
-    public const string ImportRequested = "import.requested";
+    public const string ImportRequested = "import_requested";
 }
 
 /// <summary>

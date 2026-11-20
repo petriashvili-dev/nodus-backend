@@ -50,6 +50,35 @@ public class RecurrenceProjectionTests
     }
 
     [Fact]
+    public void Explicit_retie_removes_selected_past_slot_and_preserves_other_history()
+    {
+        Revise(null, Daily(9));
+        var movedKey = OccurrenceKey.For(0, new(2026, 10, 17), 0);
+        Revise("2026-10-17T12:00", Daily(9) with { StartDate = new(2026, 10, 18) });
+        _revisions[^1].ReplacesOccurrenceKey = movedKey;
+
+        var history = _projection.Project(History, new(2026, 10, 16), new(2026, 10, 19), At("2026-10-17T12:00"));
+        Assert.Contains(history, occurrence => occurrence.Date == new DateOnly(2026, 10, 16));
+        Assert.DoesNotContain(history, occurrence => occurrence.Key == movedKey);
+        var next = Assert.Single(_projection.Highlights(History, At("2026-10-17T12:00")));
+        Assert.Equal(new DateOnly(2026, 10, 18), next.Date);
+        Assert.Equal(OccurrenceState.Tied, next.State);
+    }
+
+    [Fact]
+    public void Explicit_retie_within_same_day_reuses_slot_at_new_time()
+    {
+        Revise(null, Daily(9));
+        var movedKey = OccurrenceKey.For(0, new(2026, 10, 17), 0);
+        Revise("2026-10-17T12:00", Daily(15) with { StartDate = new(2026, 10, 17) });
+        _revisions[^1].ReplacesOccurrenceKey = movedKey;
+
+        var next = Assert.Single(_projection.Highlights(History, At("2026-10-17T12:00")));
+        Assert.Equal(movedKey, next.Key);
+        Assert.Equal(At("2026-10-17T15:00"), next.ScheduledAt);
+    }
+
+    [Fact]
     public void Edit_during_the_day_applies_to_todays_occurrence_that_is_not_yet_past()
     {
         Revise(null, Daily(20));

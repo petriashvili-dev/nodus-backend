@@ -13,7 +13,7 @@ sequenceDiagram
     participant H as Hangfire (ai-continuations)
     C->>S: POST/PATCH узла
     S-->>C: ответ (без ожидания AI)
-    Note over S: outbox: ai.continuation.requested { node_id, content_hash }
+    Note over S: outbox: ai_continuation_requested { node_id, content_hash }
     S->>H: отложить на 20 с (debounce)
     H->>H: конвейер
     H-->>C: suggestion в sync (status: ready)

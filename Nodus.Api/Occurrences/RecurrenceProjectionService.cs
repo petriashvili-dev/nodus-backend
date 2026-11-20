@@ -68,6 +68,9 @@ public sealed class RecurrenceProjectionService(IRecurrenceCalculator calculator
         var result = new List<Occurrence>();
         var governed = new HashSet<string>(StringComparer.Ordinal);
         var revisions = history.Revisions;
+        var replacements = revisions.Where(r => r.ReplacesOccurrenceKey is not null)
+            .GroupBy(r => r.ReplacesOccurrenceKey!, StringComparer.Ordinal)
+            .ToDictionary(group => group.Key, group => group.Max(r => r.Revision), StringComparer.Ordinal);
 
         for (var i = 0; i < revisions.Count; i++)
         {
@@ -85,6 +88,9 @@ public sealed class RecurrenceProjectionService(IRecurrenceCalculator calculator
             {
                 var key = OccurrenceKey.For(revision.Generation, local.Date, local.Slot);
                 if (governed.Contains(key)) continue;
+                // A retie moves exactly one active slot. Do not let its old
+                // revision claim the key, including a move within the same day.
+                if (replacements.TryGetValue(key, out var replacedBy) && replacedBy > revision.Revision) continue;
 
                 var (scheduledAt, pastAt) = Resolve(local, zone);
                 if (supersededAt is { } s && pastAt >= s) continue;

@@ -43,6 +43,8 @@ API подключён к `eatee-mail` и обращается к `eatee-infrast
 
 Все labels находятся в `deploy.labels`; HTTPS использует resolver `regru`, HTTP — собственный middleware `nodus-redirect`. Существующий wildcard Traefik Eatee может обслуживать `nodus.eatee.ru`; выпуском и продлением управляет Traefik, не API. Подробнее — [18-domain-and-tls.md](18-domain-and-tls.md).
 
+Для сети указан только `traefik.swarm.network=eatee-proxy`. Не добавлять одновременно `traefik.docker.network`: Traefik отклоняет сервис с ошибкой `both Docker and Swarm labels are defined`, и внешний запрос получает 404. В Raw Compose Dokploy удалить Docker-label из сохранённого файла, чтобы следующий deployment не вернул конфликт.
+
 ACME/REG.RU/proxy credentials не включать в Environment приложения. Все новые настройки приложения и индексы массивов можно добавлять в Environment без правки Stack.
 
 ## Проверка и команды

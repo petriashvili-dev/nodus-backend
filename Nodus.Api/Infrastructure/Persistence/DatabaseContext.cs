@@ -12,6 +12,7 @@ using Nodus.Api.DataPortability;
 using Nodus.Api.Devices;
 using Nodus.Api.Infrastructure.Outbox;
 using Nodus.Api.Nodes;
+using Nodus.Api.Plans;
 using Nodus.Api.Occurrences;
 using Nodus.Api.Recurrence;
 using Nodus.Api.Sharing;
@@ -66,10 +67,10 @@ public sealed class DatabaseContext(DbContextOptions<DatabaseContext> options) :
             e.HasIndex(x => x.Email).IsUnique().HasFilter("email IS NOT NULL");
             e.Property(x => x.DisplayName).HasMaxLength(UserProfile.DisplayNameLength);
             e.Property(x => x.Timezone).HasMaxLength(64);
-            e.Property(x => x.Plan).HasConversion<string>().HasMaxLength(16);
-            e.Property(x => x.PlanSource).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Plan).HasConversion<SnakeCaseEnumConverter<UserPlan>>().HasMaxLength(16).HasDefaultValue(UserPlan.Standard);
+            e.Property(x => x.PlanSource).HasConversion<SnakeCaseEnumConverter<PlanSource>>().HasMaxLength(16);
             e.Property(x => x.Version).IsConcurrencyToken();
-            e.ToTable(t => t.HasCheckConstraint("ck_users_plan", "\"plan\" IN ('Standard', 'Plus')"));
+            e.ToTable(t => t.HasCheckConstraint("ck_users_plan", "\"plan\" IN ('standard', 'plus')"));
         });
 
         b.Entity<RefreshToken>(e =>
@@ -79,7 +80,7 @@ public sealed class DatabaseContext(DbContextOptions<DatabaseContext> options) :
             e.HasIndex(x => x.TokenHash).IsUnique();
             e.HasIndex(x => x.FamilyId);
             e.HasIndex(x => x.UserId);
-            e.Property(x => x.RevokedReason).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.RevokedReason).HasConversion<SnakeCaseEnumConverter<RefreshTokenRevocation>>().HasMaxLength(32);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -87,7 +88,7 @@ public sealed class DatabaseContext(DbContextOptions<DatabaseContext> options) :
         {
             e.HasKey(x => x.Id);
             e.Property(x => x.Email).HasMaxLength(320);
-            e.Property(x => x.Purpose).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Purpose).HasConversion<SnakeCaseEnumConverter<EmailCodePurpose>>().HasMaxLength(16);
             e.Property(x => x.CodeHash).HasMaxLength(64);
             e.HasIndex(x => new { x.Email, x.CreatedAt });
         });
@@ -95,7 +96,7 @@ public sealed class DatabaseContext(DbContextOptions<DatabaseContext> options) :
         b.Entity<Node>(e =>
         {
             e.HasKey(x => x.Id);
-            e.Property(x => x.Type).HasConversion<string>().HasMaxLength(32);
+            e.Property(x => x.Type).HasConversion<SnakeCaseEnumConverter<NodeType>>().HasMaxLength(32);
             e.Property(x => x.Title).HasMaxLength(Limits.TitleLength);
             e.Property(x => x.Description).HasMaxLength(Limits.DescriptionLength);
             e.Property(x => x.Timezone).HasMaxLength(64);
@@ -108,6 +109,7 @@ public sealed class DatabaseContext(DbContextOptions<DatabaseContext> options) :
         b.Entity<NodeRevision>(e =>
         {
             e.HasKey(x => new { x.NodeId, x.Revision });
+            e.Property(x => x.ReplacesOccurrenceKey).HasMaxLength(32);
             e.Property(x => x.Title).HasMaxLength(Limits.TitleLength);
             e.Property(x => x.Description).HasMaxLength(Limits.DescriptionLength);
             e.Property(x => x.Timezone).HasMaxLength(64);
@@ -119,7 +121,7 @@ public sealed class DatabaseContext(DbContextOptions<DatabaseContext> options) :
         {
             e.HasKey(x => new { x.NodeId, x.OccurrenceKey });
             e.Property(x => x.OccurrenceKey).HasMaxLength(32);
-            e.Property(x => x.State).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.State).HasConversion<SnakeCaseEnumConverter<OccurrenceState>>().HasMaxLength(16);
             e.Property(x => x.Title).HasMaxLength(Limits.TitleLength);
             e.Property(x => x.Version).IsConcurrencyToken();
             e.HasOne<Node>().WithMany().HasForeignKey(x => x.NodeId).OnDelete(DeleteBehavior.Cascade);
@@ -128,8 +130,8 @@ public sealed class DatabaseContext(DbContextOptions<DatabaseContext> options) :
         b.Entity<SyncChange>(e =>
         {
             e.HasKey(x => new { x.RecipientUserId, x.Revision });
-            e.Property(x => x.EntityType).HasConversion<string>().HasMaxLength(32);
-            e.Property(x => x.Operation).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.EntityType).HasConversion<SnakeCaseEnumConverter<SyncEntityType>>().HasMaxLength(32);
+            e.Property(x => x.Operation).HasConversion<SnakeCaseEnumConverter<SyncOperation>>().HasMaxLength(16);
             e.Property(x => x.EntityId).HasMaxLength(80);
             e.HasIndex(x => x.CreatedAt);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.RecipientUserId).OnDelete(DeleteBehavior.Cascade);
@@ -152,7 +154,7 @@ public sealed class DatabaseContext(DbContextOptions<DatabaseContext> options) :
             e.Property(x => x.InstallationId).HasMaxLength(64);
             e.Property(x => x.Platform).HasMaxLength(16);
             e.Property(x => x.ApnsToken).HasMaxLength(200);
-            e.Property(x => x.ApnsEnvironment).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.ApnsEnvironment).HasConversion<SnakeCaseEnumConverter<ApnsEnvironment>>().HasMaxLength(16);
             e.Property(x => x.AppVersion).HasMaxLength(32);
             e.HasIndex(x => new { x.UserId, x.InstallationId }).IsUnique();
             e.HasIndex(x => x.ApnsToken).IsUnique().HasFilter("apns_token IS NOT NULL");
@@ -164,7 +166,7 @@ public sealed class DatabaseContext(DbContextOptions<DatabaseContext> options) :
             e.HasKey(x => x.Id);
             e.HasIndex(x => new { x.UserLowId, x.UserHighId }).IsUnique();
             e.HasIndex(x => x.UserHighId);
-            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Status).HasConversion<SnakeCaseEnumConverter<ConnectionStatus>>().HasMaxLength(16);
             e.Property(x => x.Version).IsConcurrencyToken();
             e.ToTable(t => t.HasCheckConstraint("ck_connections_normalized_pair", "user_low_id < user_high_id"));
             e.HasOne<User>().WithMany().HasForeignKey(x => x.UserLowId).OnDelete(DeleteBehavior.Cascade);
@@ -179,7 +181,7 @@ public sealed class DatabaseContext(DbContextOptions<DatabaseContext> options) :
             e.HasIndex(x => x.TokenHash).IsUnique();
             e.HasIndex(x => x.CodeHash);
             e.HasIndex(x => new { x.InviterId, x.Status });
-            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Status).HasConversion<SnakeCaseEnumConverter<InviteStatus>>().HasMaxLength(16);
             e.HasOne<User>().WithMany().HasForeignKey(x => x.InviterId).OnDelete(DeleteBehavior.Cascade);
         });
 
@@ -194,7 +196,7 @@ public sealed class DatabaseContext(DbContextOptions<DatabaseContext> options) :
         b.Entity<AiDraftJob>(e =>
         {
             e.HasKey(x => x.Id);
-            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Status).HasConversion<SnakeCaseEnumConverter<AiDraftJobStatus>>().HasMaxLength(16);
             e.Property(x => x.Timezone).HasMaxLength(64);
             e.Property(x => x.InputText).HasMaxLength(8000);
             e.Property(x => x.LastError).HasMaxLength(64);
@@ -220,8 +222,8 @@ public sealed class DatabaseContext(DbContextOptions<DatabaseContext> options) :
             e.HasIndex(x => x.SourceNodeId).IsUnique();
             e.HasIndex(x => new { x.UserId, x.LlmCalledAt });
             e.Property(x => x.ContentHash).HasMaxLength(64);
-            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
-            e.Property(x => x.Origin).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Status).HasConversion<SnakeCaseEnumConverter<SuggestionStatus>>().HasMaxLength(16);
+            e.Property(x => x.Origin).HasConversion<SnakeCaseEnumConverter<SuggestionOrigin>>().HasMaxLength(16);
             e.Property(x => x.ProposedTitle).HasMaxLength(Limits.TitleLength);
             e.Property(x => x.ProposedDescription).HasMaxLength(Limits.DescriptionLength);
             e.Property(x => x.PromptVersion).HasMaxLength(32);
@@ -243,7 +245,7 @@ public sealed class DatabaseContext(DbContextOptions<DatabaseContext> options) :
         b.Entity<ImportJob>(e =>
         {
             e.HasKey(x => x.Id);
-            e.Property(x => x.Status).HasConversion<string>().HasMaxLength(16);
+            e.Property(x => x.Status).HasConversion<SnakeCaseEnumConverter<ImportJobStatus>>().HasMaxLength(16);
             e.Property(x => x.FileName).HasMaxLength(200);
             e.Property(x => x.Timezone).HasMaxLength(64);
             e.Property(x => x.Preview).HasColumnType("jsonb");

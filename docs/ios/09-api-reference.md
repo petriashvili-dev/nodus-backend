@@ -65,7 +65,7 @@ DeviceDto { id, installation_id, platform, has_push_token, apns_environment (unk
 ```text
 CreateNode { id (UUID клиента), type (one_time|recurring|anniversary), title (≤200), description? (≤4000), timezone (IANA),
              date?, time?, recurrence?, track_years? }
-UpdateNode { expected_version, title, description?, timezone, date?, time?, recurrence?, track_years? }   — полный шаблон
+UpdateNode { expected_version, title, description?, timezone, date?, time?, recurrence?, track_years?, replaces_occurrence_key? }   — полный шаблон
 
   one_time:    date? (без даты — «когда-нибудь»), time? (требует date), recurrence = null
   recurring:   recurrence обязателен, date = time = null
@@ -84,6 +84,8 @@ OccurrenceDto { node_id, key, revision, title, description, date, time, schedule
 OccurrenceStateDto { node_id, key, state, completed_at, version, updated_at, updated_by,
                      revision, title, date, time, scheduled_at }
 ```
+
+`UpdateNode.replaces_occurrence_key` — необязательное намерение перевязки серии: ключ выбранного экземпляра из ленты/уведомления. Вместе с новым полным шаблоном сервер сохраняет замену этого активного экземпляра, чтобы его прежняя дата не оставалась на нити как историческая. Остальная история не меняется; развязанный экземпляр сохраняется как выполненный. Для одноразового узла поле не передаётся. Неверный формат/одноразовый узел → `400 validation_failed`, отсутствующий экземпляр → `404 occurrence_not_found`. Проверка версии и идемпотентность остаются обязательными. Повтор после подтверждения — только с тем же `Idempotency-Key` и неизменным телом.
 
 `NodeDto.members` не включает владельца (`owner_id`): пустой массив — личный узел, один или больше участников — совместный. Тот же формат используется в `current` при конфликте версий.
 

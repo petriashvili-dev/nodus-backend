@@ -90,9 +90,9 @@ public sealed class ConnectionService(
         var hash = token is not null ? HashToken(token) : HashCode(NormalizeCode(code));
         var invite = await (token is not null
                 ? db.ConnectionInvites.FromSql(
-                    $"SELECT * FROM connection_invites WHERE token_hash = {hash} AND status = 'Pending' LIMIT 1 FOR UPDATE")
+                    $"SELECT * FROM connection_invites WHERE token_hash = {hash} AND status = 'pending' LIMIT 1 FOR UPDATE")
                 : db.ConnectionInvites.FromSql(
-                    $"SELECT * FROM connection_invites WHERE code_hash = {hash} AND status = 'Pending' LIMIT 1 FOR UPDATE"))
+                    $"SELECT * FROM connection_invites WHERE code_hash = {hash} AND status = 'pending' LIMIT 1 FOR UPDATE"))
             .FirstOrDefaultAsync(ct);
         if (invite is null || invite.Status != InviteStatus.Pending || invite.ExpiresAt <= now)
             return ApiResult.Problem(StatusCodes.Status404NotFound, "invite_invalid", "The invitation is invalid or has expired.");

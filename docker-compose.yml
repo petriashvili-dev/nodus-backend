@@ -42,7 +42,6 @@ services:
       labels:
         - traefik.enable=true
         - traefik.swarm.network=eatee-proxy
-        - traefik.docker.network=eatee-proxy
         - traefik.http.routers.nodus-web.rule=Host(`nodus.eatee.ru`)
         - traefik.http.routers.nodus-web.entrypoints=web
         - traefik.http.routers.nodus-web.middlewares=nodus-redirect

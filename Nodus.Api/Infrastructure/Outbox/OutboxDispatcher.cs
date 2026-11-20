@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Nodus.Api.Infrastructure.Observability;
@@ -111,7 +112,7 @@ public sealed class OutboxDispatcher(
             catch (Exception e) when (e is not OperationCanceledException)
             {
                 outboxEvent.Attempts++;
-                outboxEvent.LastError = e.GetType().Name;
+                outboxEvent.LastError = JsonNamingPolicy.SnakeCaseLower.ConvertName(e.GetType().Name);
                 ApiMetrics.OutboxDispatched(outboxEvent.Type,
                     outboxEvent.Attempts >= options.Value.MaxAttempts ? "abandoned" : "failed", TimeSpan.Zero);
                 if (outboxEvent.Attempts >= options.Value.MaxAttempts)
