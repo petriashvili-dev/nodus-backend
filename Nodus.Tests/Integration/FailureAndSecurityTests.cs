@@ -56,7 +56,7 @@ public class OutboxFailureTests : IAsyncLifetime
         await DispatchAsync();
         await DispatchAsync();
 
-        Assert.Equal((1, "InvalidOperationException"), (afterFailure.Attempts, afterFailure.LastError));
+        Assert.Equal((1, "invalid_operation_exception"), (afterFailure.Attempts, afterFailure.LastError));
         Assert.NotNull(afterFailure.NextAttemptAt);
         Assert.Equal(1, _handler.Successes);
         Assert.NotNull((await LoadAsync(id)).ProcessedAt);
