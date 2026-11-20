@@ -19,7 +19,7 @@ public sealed class ChangeJournal(DatabaseContext db, TimeProvider time)
     public void Clear() => _pending.Clear();
 
     /// <summary>
-    /// Allocates per-recipient revisions and adds <see cref="SyncChange"/> rows plus one <c>sync.changed</c>
+    /// Allocates per-recipient revisions and adds <see cref="SyncChange"/> rows plus one <c>sync_changed</c>
     /// outbox event. Must run inside the transaction that saves the data; recipients are locked in id order
     /// to avoid deadlocks between concurrent shared-node writes.
     /// </summary>

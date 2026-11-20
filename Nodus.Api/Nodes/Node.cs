@@ -68,6 +68,9 @@ public sealed class NodeRevision
     /// <summary>Moment the revision took effect; null for the first revision (it has no lower bound).</summary>
     public DateTimeOffset? EffectiveFrom { get; set; }
 
+    /// <summary>The occurrence moved by an explicit retie. Other historical occurrences remain unchanged.</summary>
+    public string? ReplacesOccurrenceKey { get; set; }
+
     public required string Title { get; set; }
     public string? Description { get; set; }
     public required string Timezone { get; set; }

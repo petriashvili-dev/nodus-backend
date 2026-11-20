@@ -100,14 +100,28 @@ public sealed class NodeService(
         var template = NodeTemplate.Parse(node.Type, request, errors);
         if (template is null) return errors.ToResult();
 
-        if (!Differs(node, template)) return ApiResult.Ok(dtos.Create(await histories.LoadAsync(node, ct)));
-
         var now = time.GetUtcNow();
+        string? replacesKey = null;
+        if (request.ReplacesOccurrenceKey is { } key)
+        {
+            if (!node.IsSeries || key.Length > 32 || !OccurrenceKey.TryParse(key, out _, out var date, out _))
+                return new ValidationErrors().Add("replaces_occurrence_key", "A valid series occurrence key is required.").ToResult();
+            var original = projection.Find(await histories.LoadAsync(node, date, ct), key, now);
+            if (original is null) return ApiResult.Problem(StatusCodes.Status404NotFound, "occurrence_not_found", "The node has no such occurrence.");
+            // A completed occurrence remains part of the history; moving the
+            // series must not erase a completion or invent another one.
+            if (original.State == OccurrenceState.Tied) replacesKey = key;
+        }
+        if (!Differs(node, template) && replacesKey is null)
+            return ApiResult.Ok(dtos.Create(await histories.LoadAsync(node, ct)));
+
         if (node.IsSeries)
         {
             if (template.Recurrence!.Frequency != node.Recurrence!.Frequency) node.Generation++;
             node.Revision++;
-            db.NodeRevisions.Add(Revision(node, template, now, userId, effectiveFrom: now));
+            var revision = Revision(node, template, now, userId, effectiveFrom: now);
+            revision.ReplacesOccurrenceKey = replacesKey;
+            db.NodeRevisions.Add(revision);
         }
 
         Apply(node, template);

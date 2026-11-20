@@ -72,8 +72,8 @@ flowchart TB
     AUTH -- "OTP" --> MAIL --> SMTP
 
     PG -- "outbox_events" --> DISP
-    DISP -- "sync.changed" --> HUB --> SSEE
-    DISP -- "push.requested / ai.* / import.requested" --> HF
+    DISP -- "sync_changed" --> HUB --> SSEE
+    DISP -- "push_requested / ai.* / import_requested" --> HF
     HF <--> PG
 
     Q1 & Q2 & Q3 --> LLMC
@@ -109,7 +109,7 @@ sequenceDiagram
     D-->>C: SSE sync.required
     D->>H: enqueue AiDraftRunner (ai-drafts)
     H->>X: LLM (neuroapi → Timeweb)
-    H->>DB: черновики + status ready + sync_changes + outbox(push.requested)
+    H->>DB: черновики + status ready + sync_changes + outbox(push_requested)
     D-->>C: SSE sync.required
     D->>H: PushDeliveryJob (notifications)
     H->>X: APNs
@@ -207,11 +207,11 @@ sequenceDiagram
 
 | Тип события | Обработчик | Что делает |
 |---|---|---|
-| `sync.changed` | `SyncChangedOutboxHandler` | шлёт SSE-сигнал получателям |
-| `push.requested` | `PushRequestedOutboxHandler` | ставит задачу доставки push (очередь `notifications`) |
-| `ai.draft.requested` | `AiDraftRequestedOutboxHandler` | ставит разбор текста (очередь `ai-drafts`) |
-| `ai.continuation.requested` | `ContinuationRequestedOutboxHandler` | откладывает конвейер продолжения (очередь `ai-continuations`) |
-| `import.requested` | `ImportRequestedOutboxHandler` | ставит AI-конвертацию файла (очередь `imports`) |
+| `sync_changed` | `SyncChangedOutboxHandler` | шлёт SSE-сигнал получателям |
+| `push_requested` | `PushRequestedOutboxHandler` | ставит задачу доставки push (очередь `notifications`) |
+| `ai_draft_requested` | `AiDraftRequestedOutboxHandler` | ставит разбор текста (очередь `ai-drafts`) |
+| `ai_continuation_requested` | `ContinuationRequestedOutboxHandler` | откладывает конвейер продолжения (очередь `ai-continuations`) |
+| `import_requested` | `ImportRequestedOutboxHandler` | ставит AI-конвертацию файла (очередь `imports`) |
 
 Зачем это нужно: нельзя «сначала закоммитить, потом поставить задачу в Hangfire» — между этими шагами процесс может упасть, и задание потеряется. С outbox задание либо записано вместе с данными, либо не записано вообще.
 

@@ -26,6 +26,36 @@ public class NodeSyncTests(TestApp app) : IClassFixture<TestApp>
         await (await user.Client.GetAsync($"/v1/sync?cursor={cursor}")).ReadJsonAsync();
 
     [Fact]
+    public async Task Explicit_series_retie_replaces_selected_slot_in_dto_feed_and_history()
+    {
+        var user = await app.CreateUserAsync();
+        var id = Guid.NewGuid();
+        Assert.Equal(HttpStatusCode.Created, (await user.Client.PostJsonAsync("/v1/nodes", Daily(id), Key())).StatusCode);
+        var current = await (await user.Client.GetAsync($"/v1/nodes/{id}")).ReadJsonAsync();
+        var today = DateOnly.FromDateTime(app.Time.GetUtcNow().ToOffset(TimeSpan.FromHours(3)).DateTime);
+        var key = $"g0-{today:yyyyMMdd}-0";
+        var tomorrow = today.AddDays(1).ToString("yyyy-MM-dd");
+        var body = new { expected_version = current.GetProperty("version").GetInt64(), title = "Зарядка",
+            timezone = "Europe/Moscow", replaces_occurrence_key = key,
+            recurrence = new { frequency = "daily", start_date = tomorrow, times = new[] { "09:00" } } };
+        var ik = Key();
+        var response = await user.Client.SendJsonAsync(HttpMethod.Patch, $"/v1/nodes/{id}", body, ik);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var dto = await response.ReadJsonAsync();
+        Assert.DoesNotContain(dto.GetProperty("occurrences").EnumerateArray(), o => o.GetProperty("key").GetString() == key);
+        var feed = await (await user.Client.GetAsync("/v1/feed")).ReadJsonAsync();
+        var active = Assert.Single(feed.GetProperty("items").EnumerateArray());
+        Assert.Equal(tomorrow, active.GetProperty("occurrence").GetProperty("date").GetString());
+        var retry = await user.Client.SendJsonAsync(HttpMethod.Patch, $"/v1/nodes/{id}", body, ik);
+        Assert.Equal(await response.Content.ReadAsStringAsync(), await retry.Content.ReadAsStringAsync());
+        var history = await (await user.Client.GetAsync($"/v1/nodes/{id}/occurrences?from={today.AddDays(-1):yyyy-MM-dd}&to={tomorrow}")).ReadJsonAsync();
+        Assert.Contains(history.GetProperty("occurrences").EnumerateArray(), o => o.GetProperty("date").GetString() == today.AddDays(-1).ToString("yyyy-MM-dd"));
+        var invalid = await user.Client.SendJsonAsync(HttpMethod.Patch, $"/v1/nodes/{id}", body with
+            { expected_version = dto.GetProperty("version").GetInt64(), replaces_occurrence_key = "g0-20261001-9" }, Key());
+        Assert.Equal(HttpStatusCode.NotFound, invalid.StatusCode);
+    }
+
+    [Fact]
     public async Task Mutations_require_an_idempotency_key()
     {
         var user = await app.CreateUserAsync();

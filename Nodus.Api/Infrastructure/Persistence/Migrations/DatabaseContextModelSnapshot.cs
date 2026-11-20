@@ -445,9 +445,11 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
 
                     b.Property<string>("Plan")
                         .IsRequired()
+                        .ValueGeneratedOnAdd()
                         .HasMaxLength(16)
                         .HasColumnType("character varying(16)")
-                        .HasColumnName("plan");
+                        .HasColumnName("plan")
+                        .HasDefaultValue("standard");
 
                     b.Property<DateTimeOffset?>("PlanExpiresAt")
                         .HasColumnType("timestamp with time zone")
@@ -490,7 +492,7 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
 
                     b.ToTable("users", null, t =>
                         {
-                            t.HasCheckConstraint("ck_users_plan", "\"plan\" IN ('Standard', 'Plus')");
+                            t.HasCheckConstraint("ck_users_plan", "\"plan\" IN ('standard', 'plus')");
                         });
                 });
 
@@ -944,6 +946,11 @@ namespace Nodus.Api.Infrastructure.Persistence.Migrations
                         .IsRequired()
                         .HasColumnType("jsonb")
                         .HasColumnName("recurrence");
+
+                    b.Property<string>("ReplacesOccurrenceKey")
+                        .HasMaxLength(32)
+                        .HasColumnType("character varying(32)")
+                        .HasColumnName("replaces_occurrence_key");
 
                     b.Property<string>("Timezone")
                         .IsRequired()
